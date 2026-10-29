@@ -629,9 +629,12 @@ function safeSheetName(n, used){
 
 /* ============ export marksheet ============ */
 function buildClassSheet(sh, cls, opts, xs){
-  if (opts.blank) cls = {name: cls.name, scores: {}, students: cls.students.length ? cls.students : Array.from({length: opts.rows || 35}, (_, k) => ({id: 'ph' + k, no: k + 1, zh: '', en: '', sex: '', ph: true}))};
+  // fixed layout: every class sheet has the same number of student rows (default 35), empty rows padded at the bottom
+  const ROWS = opts.rows || 35, emptyCls = !cls.students.length;
+  cls = {name: cls.name, scores: opts.blank ? {} : cls.scores,
+    students: cls.students.concat(Array.from({length: Math.max(0, ROWS - cls.students.length)}, (_, k) => ({id: 'pad' + k, no: opts.blank && emptyCls ? k + 1 : '', zh: '', en: '', sex: '', ph: true})))};
   const T = num(sh.calc.total), d = +sh.calc.decimals, items = orderedItems(sh), mode = sh.calc.mode;
-  const hasEn = cls.students.some(s => s.en || s.ph), hasSex = cls.students.some(s => s.sex || s.ph);
+  const hasEn = opts.hasEn, hasSex = opts.hasSex;
   let c = 1; const col = {};
   col.no = c++; col.zh = c++; if (hasEn) col.en = c++; if (hasSex) col.sex = c++;
   const nameCols = c - 1;
@@ -777,6 +780,8 @@ function buildClassSheet(sh, cls, opts, xs){
   return totalsRef;
 }
 function exportMarksheet(sh, classIds, opts){
+  const chosen = sh.classes.filter(c => classIds.includes(c.id));
+  opts = {...opts, hasEn: opts.blank || chosen.some(c => c.students.some(s => s.en)), hasSex: opts.blank || chosen.some(c => c.students.some(s => s.sex))};
   const used = new Set(); const sheets = []; const summary = [];
   for (const cls of sh.classes.filter(c => classIds.includes(c.id))){
     const xs = new XSheet(safeSheetName(cls.name, used));
@@ -790,6 +795,7 @@ function exportMarksheet(sh, classIds, opts){
     let r = 4;
     for (const {cls, xs: cs, refs} of summary){
       for (const ref of refs){
+        if (ref.st.ph && !opts.blank) continue;
         const st = ref.st; const q = qSheet(cs.name); const pick = (cn, v) => xs.set(r, cn.k, v, cn.s, `IF(${q}!${colName(cn.c)}${ref.row}="","",${q}!${colName(cn.c)}${ref.row})`);
         xs.set(r, 1, refs.cls.name, 4);
         pick({k:2, c:1, s:5}, Number.isFinite(+st.no) && st.no !== '' ? +st.no : (st.no || ''));
@@ -1314,7 +1320,7 @@ function exportTab(sh){
     <div class="row">${sh.classes.map(c => `<label class="check"><input type="checkbox" data-exp="${c.id}" checked> ${esc(c.name)}</label>`).join('')}</div>
     <div class="row"><label class="check"><input type="checkbox" id="optSign" checked> 加入「學生簽署」欄</label><label class="check"><input type="checkbox" id="optSummary" checked> 加入「總分表」（所有班別一頁）</label>
       <label class="check"><input type="checkbox" id="optProtect" checked> 保護公式（只可填姓名、分數；Excel「校閱 → 取消保護工作表」可解除）</label>
-      <label class="check">沒有名單的班預留 <input class="inp num" id="optRows" value="35" inputmode="numeric" style="width:56px"> 行</label></div>
+      <label class="check">每班固定 <input class="inp num" id="optRows" value="35" inputmode="numeric" style="width:56px"> 行（人數較少的班留空行，所有班格式相同）</label></div>
     <div class="row"><button class="btn primary" data-act="exportXlsx" ${sh.classes.length ? '' : 'disabled'}>下載 Excel 分紙</button></div>
   </section>
   <section class="card">
