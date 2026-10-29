@@ -126,6 +126,7 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .inp:focus{outline:2px solid color-mix(in srgb,var(--accent) 55%,transparent);outline-offset:0;border-color:var(--accent)}
 textarea.inp{min-height:110px;resize:vertical;font-family:var(--f-num);font-size:12.5px}
 .num{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+.inp:disabled,select.inp:disabled{opacity:.6;background:var(--sheet-2);cursor:not-allowed}
 .inp::placeholder,textarea::placeholder{color:var(--ink-3);opacity:.75}
 .check{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13.5px}
 .check input{accent-color:var(--accent);width:16px;height:16px}
@@ -172,6 +173,8 @@ table.g{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%}
 .g td.tot,.g th.tot{background:var(--total-bg);text-align:center;font-family:var(--f-num);font-weight:600;min-width:76px;padding:0 8px;position:sticky;right:0;z-index:1;border-left:2px solid var(--rule-2)}
 .g thead th.tot{z-index:3}
 .g td.tot.low{color:var(--redpen)}
+.g td.rawv{text-align:center;font-family:var(--f-num);color:var(--ink-2);min-width:54px;padding:0 6px;background:var(--sheet-2)}
+.g th.rawh{font-weight:500;color:var(--ink-2)}
 .g td.catv{text-align:center;font-family:var(--f-num);color:var(--ink-2);min-width:70px;padding:0 6px}
 .g tfoot td{background:var(--sheet-2);font-family:var(--f-num);text-align:center;color:var(--ink-2);height:32px;position:sticky;bottom:0;z-index:2}
 .g tfoot td.stick1,.g tfoot td.stick2{z-index:4;background:var(--sheet-2);font-family:var(--f-body)}
@@ -241,6 +244,9 @@ table.g{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%}
 .muted{color:var(--ink-3)}
 .sumline{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;font-size:13.5px;color:var(--ink-2)}
 .sumline b{color:var(--ink);font-family:var(--f-num)}
+.lockbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;border:1px dashed var(--rule-2);border-radius:10px;padding:10px 14px;font-size:13px;color:var(--ink-2)}
+.lockbar span{flex:1 1 320px;min-width:0}
+.lockbar.on{border-style:solid;border-color:var(--warn);background:var(--warn-soft);color:var(--ink)}
 .typlans{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
 .typlan{display:flex;flex-direction:column;gap:10px;border:1px solid var(--rule-2);border-radius:10px;padding:14px;cursor:default;min-width:0}
 .typlan:has(input[type=radio]:checked){border-color:var(--accent);background:var(--accent-soft)}
@@ -300,6 +306,7 @@ function orderedItems(sh){
   const order = new Map(sh.categories.map((c,i) => [c.id, i]));
   return sh.items.map((it, i) => [it, i]).sort((a,b) => ((order.get(a[0].catId) ?? 999) - (order.get(b[0].catId) ?? 999)) || a[1]-b[1]).map(x => x[0]);
 }
+function rawOf(sh, it){ const ri = sh.typeInfo && sh.typeInfo[it.id]; return ri && ri.data && Object.keys(ri.data).length ? ri : null; }
 function sumWeights(sh){ return sh.items.filter(i => !i.bonus).reduce((a,i) => a + num(i.weight), 0); }
 
 /* ============ templates ============ */
@@ -628,7 +635,9 @@ function buildClassSheet(sh, cls, opts, xs){
   let c = 1; const col = {};
   col.no = c++; col.zh = c++; if (hasEn) col.en = c++; if (hasSex) col.sex = c++;
   const nameCols = c - 1;
-  const itemCol = {}; items.forEach(it => itemCol[it.id] = c++);
+  const itemCol = {}, rawCol = {};
+  items.forEach(it => { const ri = rawOf(sh, it); if (ri){ rawCol[it.id] = {s: c, w: c + 1, info: ri}; c += 2; } itemCol[it.id] = c++; });
+  const startCol = it => rawCol[it.id] ? rawCol[it.id].s : itemCol[it.id];
   const catCol = {}; const catsUsed = sh.categories.filter(cat => items.some(i => !i.bonus && i.catId === cat.id));
   if (mode === 'category') catsUsed.forEach(cat => catCol[cat.id] = c++);
   col.total = c++; if (opts.sign) col.sign = c++;
@@ -651,10 +660,12 @@ function buildClassSheet(sh, cls, opts, xs){
   while (i < items.length){
     const cid = items[i].catId; let j = i; while (j + 1 < items.length && items[j+1].catId === cid) j++;
     const cat = sh.categories.find(x => x.id === cid);
-    xs.set(R.cat, itemCol[items[i].id], cat ? cat.name : '', 3); xs.merge(R.cat, itemCol[items[i].id], R.cat, itemCol[items[j].id], 3);
+    xs.set(R.cat, startCol(items[i]), cat ? cat.name : '', 3); xs.merge(R.cat, startCol(items[i]), R.cat, itemCol[items[j].id], 3);
     i = j + 1;
   }
-  items.forEach(it => xs.set(R.name, itemCol[it.id], it.name + (it.bonus ? '（加分）' : ''), 3));
+  items.forEach(it => { const rc = rawCol[it.id];
+    if (rc){ xs.set(R.name, rc.s, `${it.name}\n分數`, 3); xs.set(R.name, rc.w, `${it.name}\n${rc.info.unit || 'WPM'}`, 3); }
+    xs.set(R.name, itemCol[it.id], it.name + (it.bonus ? '（加分）' : rc ? '\n換算得分' : ''), 3); });
   if (mode === 'category' && catsUsed.length){
     const c1 = catCol[catsUsed[0].id], c2 = catCol[catsUsed[catsUsed.length-1].id];
     xs.set(R.cat, c1, '類別得分', 3); xs.merge(R.cat, c1, R.cat, c2, 3);
@@ -672,7 +683,7 @@ function buildClassSheet(sh, cls, opts, xs){
   }
   // full marks row
   xs.set(R.full, 1, '滿分', 10); xs.merge(R.full, 1, R.full, nameCols, 10);
-  items.forEach(it => xs.set(R.full, itemCol[it.id], num(it.full), 9));
+  items.forEach(it => { xs.set(R.full, itemCol[it.id], num(it.full), 9); const rc = rawCol[it.id]; if (rc){ xs.set(R.full, rc.s, null, 9); xs.set(R.full, rc.w, null, 9); xs.set(R.w, rc.s, null, 9); xs.set(R.w, rc.w, null, 9); } });
   catsUsed.forEach(cat => catCol[cat.id] && xs.set(R.full, catCol[cat.id], null, 9));
   xs.set(R.full, col.total, T, 9); if (col.sign) xs.set(R.full, col.sign, null, 9);
   // weights row
@@ -689,12 +700,13 @@ function buildClassSheet(sh, cls, opts, xs){
     const row = R.first + k; const sc = cls.scores[st.id] || {};
     xs.set(row, col.no, st.no === '' || st.no === undefined ? null : (Number.isFinite(+st.no) ? +st.no : st.no), 17);
     xs.set(row, col.zh, st.zh || '', 16); if (col.en) xs.set(row, col.en, st.en || '', 16); if (col.sex) xs.set(row, col.sex, st.sex || '', 17);
-    items.forEach(it => { const v = sc[it.id]; xs.set(row, itemCol[it.id], v === undefined || v === null || v === '' ? null : v, 17); });
+    items.forEach(it => { const v = sc[it.id]; xs.set(row, itemCol[it.id], v === undefined || v === null || v === '' ? null : v, 17);
+      const rc = rawCol[it.id]; if (rc){ const d0 = opts.blank ? null : rc.info.data[st.id]; xs.set(row, rc.s, d0 && d0.score !== null && d0.score !== undefined ? d0.score : null, 17); xs.set(row, rc.w, d0 && d0.wpm !== null && d0.wpm !== undefined ? d0.wpm : null, 17); } });
     const res = computeStudent(sh, sc);
     const X = it => `${colName(itemCol[it.id])}${row}`;
     const fullRef = it => `${colName(itemCol[it.id])}$${R.full}`, wRef = it => `${colName(itemCol[it.id])}$${R.w}`;
     const cond = it => skip ? `AND(${X(it)}<>"免",${X(it)}<>"")` : `${X(it)}<>"免"`;
-    const rng = `${colName(firstItemCol)}${row}:${colName(lastItemCol)}${row}`;
+    const rng = items.map(X).join(',');
     const bonus = items.filter(it => it.bonus && num(it.full) > 0).map(it => `N(${X(it)})/${fullRef(it)}*${wRef(it)}`);
     const nb = items.filter(it => !it.bonus && num(it.full) > 0);
     let numE = null, denE = null;
@@ -734,14 +746,15 @@ function buildClassSheet(sh, cls, opts, xs){
   if (cls.students.length){
     xs.set(avgRow, 1, '平均', 10); xs.merge(avgRow, 1, avgRow, nameCols, 10);
     const avgOf = vals => { const v = vals.filter(x => typeof x === 'number' && Number.isFinite(x)); return v.length ? v.reduce((a,b) => a+b, 0) / v.length : ''; };
-    items.forEach(it => { const cn = colName(itemCol[it.id]); xs.set(avgRow, itemCol[it.id], avgOf(cls.students.map(st => (cls.scores[st.id]||{})[it.id])), 11, `IFERROR(AVERAGE(${cn}${R.first}:${cn}${last}),"")`); });
+    items.forEach(it => { const cn = colName(itemCol[it.id]); xs.set(avgRow, itemCol[it.id], avgOf(cls.students.map(st => (cls.scores[st.id]||{})[it.id])), 11, `IFERROR(AVERAGE(${cn}${R.first}:${cn}${last}),"")`);
+      const rc = rawCol[it.id]; if (rc) [['s','score'],['w','wpm']].forEach(([k, f]) => { const cc = colName(rc[k]); xs.set(avgRow, rc[k], opts.blank ? '' : avgOf(cls.students.map(st => (rc.info.data[st.id] || {})[f])), 11, `IFERROR(AVERAGE(${cc}${R.first}:${cc}${last}),"")`); }); });
     catsUsed.forEach(cat => { if (!catCol[cat.id]) return; const cn = colName(catCol[cat.id]); xs.set(avgRow, catCol[cat.id], avgOf(cls.students.map(st => computeStudent(sh, cls.scores[st.id]).cats[cat.id])), 11, `IFERROR(AVERAGE(${cn}${R.first}:${cn}${last}),"")`); });
     const cn = colName(col.total);
     xs.set(avgRow, col.total, avgOf(totalsRef.map(t => t.value)), 11, `IFERROR(AVERAGE(${cn}${R.first}:${cn}${last}),"")`);
   }
   // widths
   xs.widths[col.no] = 5; xs.widths[col.zh] = 10; if (col.en) xs.widths[col.en] = 20; if (col.sex) xs.widths[col.sex] = 5;
-  items.forEach(it => xs.widths[itemCol[it.id]] = Math.max(7, Math.min(12, it.name.length * 1.6 + 2)));
+  items.forEach(it => { xs.widths[itemCol[it.id]] = Math.max(7, Math.min(12, it.name.length * 1.6 + 2)); const rc = rawCol[it.id]; if (rc){ xs.widths[rc.s] = 7; xs.widths[rc.w] = 7; } });
   catsUsed.forEach(cat => { if (catCol[cat.id]) xs.widths[catCol[cat.id]] = 9; });
   xs.widths[col.total] = 9; if (col.sign) xs.widths[col.sign] = 18;
   xs.merge(1, 1, 1, Math.min(lastCol, 8));
@@ -1210,18 +1223,18 @@ function scoresTab(sh){
   const catsUsed = c.mode === 'category' ? sh.categories.filter(cat => items.some(i => !i.bonus && i.catId === cat.id)) : [];
   // category spans
   const spans = []; let i = 0;
-  while (i < items.length){ const cid = items[i].catId; let j = i; while (j + 1 < items.length && items[j+1].catId === cid) j++; spans.push({cat: sh.categories.find(x => x.id === cid), n: j - i + 1}); i = j + 1; }
+  while (i < items.length){ const cid = items[i].catId; let j = i; while (j + 1 < items.length && items[j+1].catId === cid) j++; spans.push({cat: sh.categories.find(x => x.id === cid), n: items.slice(i, j + 1).reduce((a, it) => a + (rawOf(sh, it) ? 3 : 1), 0)}); i = j + 1; }
   const head1 = `<tr><th class="stick1" rowspan="3">班號</th><th class="stick2" rowspan="3" style="text-align:left">姓名</th>
     ${spans.map(s => `<th colspan="${s.n}" class="c${catIndex(sh, s.cat?.id)}">${esc(s.cat ? s.cat.name : '')}</th>`).join('')}
     ${catsUsed.length ? `<th colspan="${catsUsed.length}">類別得分</th>` : ''}<th class="tot" rowspan="3">總分<br><span class="num" style="font-weight:400;font-size:11.5px">/ ${T}</span></th></tr>`;
-  const head2 = `<tr>${items.map(it => `<th class="c${catIndex(sh, it.catId)}" title="${esc([it.content, it.date].filter(Boolean).join('｜'))}"><span class="iname">${esc(it.name)}${it.bonus ? ' <span class="pill">加分</span>' : ''}</span></th>`).join('')}
+  const head2 = `<tr>${items.map(it => `${rawOf(sh, it) ? `<th class="c${catIndex(sh, it.catId)} rawh"><span class="iname">分數</span></th><th class="c${catIndex(sh, it.catId)} rawh"><span class="iname">${esc(rawOf(sh, it).unit || 'WPM')}</span></th>` : ''}<th class="c${catIndex(sh, it.catId)}" title="${esc([it.content, it.date].filter(Boolean).join('｜'))}"><span class="iname">${esc(it.name)}${it.bonus ? ' <span class="pill">加分</span>' : ''}${rawOf(sh, it) ? '<br>換算得分' : ''}</span></th>`).join('')}
     ${catsUsed.map(cat => `<th><span class="iname">${esc(cat.name)}</span></th>`).join('')}</tr>`;
-  const head3 = `<tr>${items.map(it => `<th><span class="ifull">/${fmtN(num(it.full))}${c.mode === 'item' && !it.bonus && num(it.weight) !== num(it.full) ? `→${fmtN(num(it.weight))}` : ''}${it.bonus ? `→+${fmtN(num(it.weight))}` : ''}<button class="btn" data-act="colTools" data-id="${it.id}" aria-label="${esc(it.name)} 整欄工具" title="整欄工具">⋯</button></span></th>`).join('')}
+  const head3 = `<tr>${items.map(it => `${rawOf(sh, it) ? '<th class="rawh"><span class="ifull">原始</span></th><th class="rawh"><span class="ifull">原始</span></th>' : ''}<th><span class="ifull">/${fmtN(num(it.full))}${c.mode === 'item' && !it.bonus && num(it.weight) !== num(it.full) ? `→${fmtN(num(it.weight))}` : ''}${it.bonus ? `→+${fmtN(num(it.weight))}` : ''}<button class="btn" data-act="colTools" data-id="${it.id}" aria-label="${esc(it.name)} 整欄工具" title="整欄工具">⋯</button></span></th>`).join('')}
     ${catsUsed.map(cat => `<th><span class="ifull">${fmtN(num(cat.weight))}%</span></th>`).join('')}</tr>`;
   const body = cls.students.map((st, r) => {
     const sc = cls.scores[st.id] || {}; const res = computeStudent(sh, sc);
     return `<tr data-sid="${st.id}"><td class="no stick1">${esc(st.no)}</td><td class="nm stick2">${esc(st.zh || st.en)}${st.zh && st.en ? `<small>${esc(st.en)}</small>` : ''}</td>
-      ${items.map((it, k) => { const v = sc[it.id]; const cls2 = scoreClass(v, it); return `<td><input class="sc${cls2}" data-r="${r}" data-c="${k}" data-iid="${it.id}" value="${v === undefined || v === null ? '' : esc(v)}" inputmode="decimal" autocomplete="off" aria-label="${esc(stuName(st))} ${esc(it.name)}"></td>`; }).join('')}
+      ${items.map((it, k) => { const v = sc[it.id]; const cls2 = scoreClass(v, it); const ri = rawOf(sh, it); const rd = ri ? (ri.data[st.id] || {}) : null; return `${ri ? `<td class="rawv">${rd.score ?? ''}</td><td class="rawv">${rd.wpm ?? ''}</td>` : ''}<td><input class="sc${cls2}" data-r="${r}" data-c="${k}" data-iid="${it.id}" value="${v === undefined || v === null ? '' : esc(v)}" inputmode="decimal" autocomplete="off" aria-label="${esc(stuName(st))} ${esc(it.name)}"></td>`; }).join('')}
       ${catsUsed.map(cat => `<td class="catv" data-cat="${cat.id}">${res.cats[cat.id] === undefined || res.cats[cat.id] === null ? '—' : fmt(res.cats[cat.id], 1)}</td>`).join('')}
       <td class="tot${res.total !== null && res.total < T/2 ? ' low' : ''}">${fmt(res.total, +c.decimals)}</td></tr>`;
   }).join('');
@@ -1242,7 +1255,7 @@ function footRow(sh, cls, items, catsUsed){
   const avg = arr => { const v = arr.filter(x => typeof x === 'number' && Number.isFinite(x)); return v.length ? v.reduce((a,b) => a+b, 0) / v.length : null; };
   const results = cls.students.map(st => computeStudent(sh, cls.scores[st.id]));
   return `<tr><td class="stick1"></td><td class="stick2" style="text-align:left;padding-left:10px">全班平均</td>
-    ${items.map(it => `<td>${fmt(avg(cls.students.map(st => (cls.scores[st.id]||{})[it.id])), 1)}</td>`).join('')}
+    ${items.map(it => { const ri = rawOf(sh, it); return `${ri ? `<td>${fmt(avg(cls.students.map(st => (ri.data[st.id] || {}).score)), 1)}</td><td>${fmt(avg(cls.students.map(st => (ri.data[st.id] || {}).wpm)), 1)}</td>` : ''}<td>${fmt(avg(cls.students.map(st => (cls.scores[st.id]||{})[it.id])), 1)}</td>`; }).join('')}
     ${catsUsed.map(cat => `<td>${fmt(avg(results.map(r => r.cats[cat.id])), 1)}</td>`).join('')}
     <td class="tot">${fmt(avg(results.map(r => r.total)), +sh.calc.decimals)}</td></tr>`;
 }
@@ -1377,7 +1390,8 @@ function tyCompute(sh){
     idx.set(normCls(c.name) + '|' + String(st.no), {c, st});
     for (const nm of [st.zh, st.en]) if (nm){ const k = nm.replace(/\s+/g, '').toUpperCase(); byName.set(k, byName.has(k) ? null : {c, st}); }
   }
-  const basisWpm = ty.basis === 'wpm' || !has('score');
+  const LK = ty.lock || null;
+  const basisWpm = LK ? LK.basisWpm : (ty.basis === 'wpm' || !has('score'));
   const recs = raw.rows.map((row, i) => {
     const cls = String(get(row, 'cls') ?? '').trim(), no = tyNum(get(row, 'no')), name = String(get(row, 'name') ?? '').trim();
     const score = tyNum(get(row, 'score')), wpm = tyNum(get(row, 'wpm')); let acc = tyNum(get(row, 'acc'));
@@ -1385,27 +1399,41 @@ function tyCompute(sh){
     let match = (cls && no !== null) ? (idx.get(normCls(cls) + '|' + no) || null) : null;
     if (!match && name) match = byName.get(name.replace(/\s+/g, '').toUpperCase()) || null;
     if (!match && !cls && no !== null && sh.classes.length === 1) match = idx.get(normCls(sh.classes[0].name) + '|' + no) || null;
-    const main = basisWpm ? wpm : score, sec = basisWpm ? score : wpm;
-    return {i, cls: match ? match.c.name : cls, no, name: name || (match ? stuName(match.st) : ''), score, wpm, acc, main, sec: sec ?? 0, done: main !== null && main > 0, blank: main === null, match, m1:0, m2:0, m3:0};
+    return {i, cls: match ? match.c.name : cls, no, name: name || (match ? stuName(match.st) : ''), score, wpm, acc, match, m1:0, m2:0, m3:0};
   }).filter(r => r.cls || r.no !== null || r.name);
+  // make-up / manual entries, and marksheet students with no record yet
+  const man = ty.manual || {}; const seen = new Set();
+  const applyMan = (r, mm) => { for (const k of ['score','wpm','acc']) if (mm[k] !== undefined && mm[k] !== null) r[k] = mm[k]; r.manual = true; };
+  for (const r of recs) if (r.match){ if (seen.has(r.match.st.id)) r.dup = true; seen.add(r.match.st.id); if (man[r.match.st.id]) applyMan(r, man[r.match.st.id]); }
+  for (const c of sh.classes) for (const st of c.students) if (!seen.has(st.id)){
+    const r = {i:-1, cls: c.name, no: st.no, name: stuName(st), score:null, wpm:null, acc:null, match:{c, st}, placeholder: !man[st.id], m1:0, m2:0, m3:0};
+    if (man[st.id]) applyMan(r, man[st.id]);
+    recs.push(r);
+  }
+  for (const r of recs){ const main = basisWpm ? r.wpm : r.score, sec = basisWpm ? r.score : r.wpm; r.main = main; r.sec = sec ?? 0; r.done = main !== null && main > 0; r.blank = main === null; }
   const D = recs.filter(r => r.done); const n = D.length;
   const sorted = D.slice().sort((a, b) => b.main - a.main || b.sec - a.sec);
   sorted.forEach((r, k) => { r.rank = (k > 0 && sorted[k-1].main === r.main && sorted[k-1].sec === r.sec) ? sorted[k-1].rank : k + 1; });
-  // plan 1: rank bands, ties take the higher band
-  const cum = []; let s = 0; ty.p1.pcts.forEach(p => { s += num(p); cum.push(s); });
-  const cuts = cum.map(c => Math.ceil(n * c / 100 - 1e-9));
-  for (const r of D){ let k = cuts.findIndex(c => r.rank <= c); if (k < 0) k = 4; r.m1 = levels[k]; }
-  // plan 2: fixed WPM thresholds, accuracy gate drops one level
-  const x2 = r => has('wpm') ? (r.wpm ?? 0) : r.main;
-  for (const r of D){ let k = ty.p2.th.findIndex(t => x2(r) >= num(t)); if (k < 0) k = 4; r.accDrop = false;
-    if (ty.p2.useAcc && has('acc') && r.acc !== null && r.acc < num(ty.p2.accGate) && k < 4){ k++; r.accDrop = true; } r.m2 = levels[k]; }
-  // plan 3: linear between the lowest completer and the top-x% reference
-  const lo = n ? sorted[n-1].main : 0, hi = n ? sorted[Math.min(n - 1, Math.max(0, Math.ceil(n * num(ty.p3.pct) / 100) - 1))].main : 0;
-  const step = num(ty.p3.step) || 1;
+  const P1 = LK ? LK.p1 : ty.p1, P2 = LK ? LK.p2 : ty.p2, P3 = LK ? LK.p3 : ty.p3;
+  // plan 1: rank bands (ties take the higher band); when locked, compare with the frozen cut-offs instead
+  if (LK){
+    const ge = (r, cu) => r.main > cu.main || (r.main === cu.main && r.sec >= cu.sec);
+    for (const r of D){ let k = LK.cuts.findIndex(cu => cu && ge(r, cu)); if (k < 0) k = 4; r.b1 = k; r.m1 = levels[k]; }
+  } else {
+    const cum = []; let s = 0; P1.pcts.forEach(p => { s += num(p); cum.push(s); });
+    const cuts = cum.map(c => Math.ceil(n * c / 100 - 1e-9));
+    for (const r of D){ let k = cuts.findIndex(c => r.rank <= c); if (k < 0) k = 4; r.b1 = k; r.m1 = levels[k]; }
+  }
+  // plan 2: fixed speed thresholds, accuracy gate drops one level
+  const x2 = r => has('wpm') || r.manual ? (r.wpm ?? 0) : r.main;
+  for (const r of D){ let k = P2.th.findIndex(t => x2(r) >= num(t)); if (k < 0) k = 4; r.accDrop = false;
+    if (P2.useAcc && r.acc !== null && r.acc < num(P2.accGate) && k < 4){ k++; r.accDrop = true; } r.m2 = levels[k]; }
+  // plan 3: linear between the lowest completer and the top-x% reference (frozen when locked)
+  const lo = LK ? LK.lo : (n ? sorted[n-1].main : 0), hi = LK ? LK.hi : (n ? sorted[Math.min(n - 1, Math.max(0, Math.ceil(n * num(P3.pct) / 100) - 1))].main : 0);
+  const step = num(P3.step) || 1;
   for (const r of D){ const f = hi > lo ? Math.min(1, Math.max(0, (r.main - lo) / (hi - lo))) : 1; r.m3 = roundTo(Math.round((levels[4] + (F - levels[4]) * f) / step + 1e-9) * step, 2); }
-  const matched = new Set(recs.filter(r => r.match).map(r => r.match.st.id));
-  const noRecord = []; for (const c of sh.classes) for (const st of c.students) if (!matched.has(st.id)) noRecord.push(`${c.name} ${st.no} ${stuName(st)}`);
-  return {recs, sorted, n, it, F, levels, lo, hi, basisWpm, has, noRecord, unmatched: recs.filter(r => !r.match)};
+  const noRecord = recs.filter(r => r.placeholder).map(r => `${r.cls} ${r.no} ${r.name}`);
+  return {recs, sorted, n, it, F, levels, lo, hi, basisWpm, has, noRecord, unmatched: recs.filter(r => !r.match), LK, P1, P2, P3};
 }
 function tyAutoThresholds(sh){
   const res = tyCompute(sh); if (!res || !res.n) return false;
@@ -1415,66 +1443,71 @@ function tyAutoThresholds(sh){
 }
 function tyDist(res, key){
   const L = res.levels; const b = [0,0,0,0,0,0]; let sum = 0;
-  for (const r of res.recs){ const v = r[key]; sum += v; if (!r.done){ b[5]++; continue; } let k = L.findIndex(l => v >= l - 1e-9); if (k < 0) k = 4; b[k]++; }
-  return {b, avg: res.recs.length ? sum / res.recs.length : null};
+  const rs = res.recs.filter(r => !r.placeholder); for (const r of rs){ const v = r[key]; sum += v; if (!r.done){ b[5]++; continue; } let k = L.findIndex(l => v >= l - 1e-9); if (k < 0) k = 4; b[k]++; }
+  return {b, avg: rs.length ? sum / rs.length : null};
 }
 function tyDistHTML(res, key){
   const {b, avg} = tyDist(res, key); const max = Math.max(1, ...b); const L = res.levels;
   const labels = [fmtN(L[0]), ...L.slice(1).map(l => fmtN(l) + '+'), '0'];
   return `<div class="tybars">${b.map((c, k) => `<div class="tybar"><span class="num">${labels[k]}</span><i style="width:${c / max * 100}%"></i><b class="num">${c}</b></div>`).join('')}</div><div class="hint" style="font-size:12px">平均 <b class="num">${fmt(avg, 1)}</b> / ${fmtN(res.F)}（包括未完成）</div>`;
 }
-function tyIn(k, v, w = 64, extra = ''){ return `<input class="inp num" data-f="ty" data-k="${k}" value="${esc(v)}" inputmode="decimal" style="width:${w}px" ${extra}>`; }
+function tyIn(k, v, w = 64, extra = ''){ if (TY_LOCKED) extra += ' disabled'; return `<input class="inp num" data-f="ty" data-k="${k}" value="${esc(v)}" inputmode="decimal" style="width:${w}px" ${extra}>`; }
+let TY_LOCKED = false;
 function typingTab(sh){
-  const ty = tyDefaults(sh); const res = tyCompute(sh); const TK = tyKey(sh), TT = TY_TESTS[TK], U = TT.unit; const LBL = {...TY_LABEL, wpm: U === 'WPM' ? 'WPM' : '速度（' + U + '）'};
+  const ty = tyDefaults(sh); const res = tyCompute(sh); TY_LOCKED = !!ty.lock; const DIS = ty.lock ? ' disabled' : ''; const TK = tyKey(sh), TT = TY_TESTS[TK], U = TT.unit; const LBL = {...TY_LABEL, wpm: U === 'WPM' ? 'WPM' : '速度（' + U + '）'};
   const chips = `<div class="chips" role="group" aria-label="打字測試">${Object.entries(TY_TESTS).map(([k, t]) => `<button class="chip" data-act="tyTest" data-k="${k}" aria-pressed="${k === TK}">${t.name}${tyRoot(sh).tests[k] && tyRoot(sh).tests[k].raw ? `<span class="count">${tyRoot(sh).tests[k].raw.rows.length}人</span>` : ''}</button>`).join('')}</div>`;
   const raw = ty.raw;
   const inputCard = `<section class="card">
     <div class="card-head"><div class="row"><h3>${TT.name}成績</h3>${chips}</div>${raw ? `<button class="btn sm" data-act="tyClear">清除，重新貼上</button>` : ''}</div>
     ${raw ? `<p class="hint">已讀入 ${raw.rows.length} 行。請確認每一欄的意思：</p>
       <div class="row">${['cls','no','name','score','wpm','acc'].map(k => `<div class="field" style="width:130px"><label>${LBL[k]}</label><select class="inp" data-f="ty" data-k="map.${k}"><option value="">（沒有）</option>${raw.header.map((h, i) => `<option value="${i}"${ty.map[k] === i ? ' selected' : ''}>${esc(h)}${raw.rows[0] && raw.rows[0][i] !== undefined && raw.rows[0][i] !== '' ? '：' + esc(String(raw.rows[0][i]).slice(0, 10)) : ''}</option>`).join('')}</select></div>`).join('')}</div>
-      ${res ? `<div class="sumline"><span>完成 <b>${res.n}</b> 人</span><span>未完成／零分 <b>${res.recs.length - res.n}</b> 人</span><span>配對到分紙學生 <b>${res.recs.length - res.unmatched.length}</b> / ${res.recs.length}</span>
+      ${res ? `<div class="sumline"><span>完成 <b>${res.n}</b> 人</span><span>未完成／零分 <b>${res.recs.filter(r => !r.done && !r.placeholder).length}</b> 人</span><span>配對到分紙學生 <b>${res.recs.filter(r => r.match && !r.placeholder).length}</b> / ${res.recs.filter(r => !r.placeholder).length}</span>
         ${res.unmatched.length ? `<span class="pill warn" title="${esc(res.unmatched.map(r => `${r.cls} ${r.no ?? ''} ${r.name}`).join('、'))}">${res.unmatched.length} 行未能配對</span>` : ''}
-        ${res.noRecord.length ? `<span class="pill" title="${esc(res.noRecord.join('、'))}">分紙中 ${res.noRecord.length} 人沒有打字紀錄</span>` : ''}</div>` : ''}`
+        ${res.noRecord.length ? `<span class="pill" title="${esc(res.noRecord.join('、'))}">分紙中 ${res.noRecord.length} 人沒有打字紀錄（可在結果表補入）</span>` : ''}</div>` : ''}`
     : `<p class="hint">把全級的打字成績貼上（可以從打字平台或 Excel 直接複製，最好連標題行），或選擇檔案。需要班別、班號（或姓名），以及分數及／或 WPM；有準確度更好。</p>
       <div class="grid3"><div class="sub"><h4>貼上成績</h4><textarea class="inp" id="tyPaste" placeholder="班別	班號	姓名	分數	${U}	準確度&#10;3A	1	陳大文	86	32	96%&#10;3A	2	李小晴	74	27	91%"></textarea><div><button class="btn sm primary" data-act="tyRead">讀取</button></div></div>
       <div class="sub"><h4>從檔案</h4><label class="drop"><input type="file" id="tyFile" accept=".xlsx,.xlsm,.csv,.txt"><span><b>選擇檔案</b></span><span class="muted" style="font-size:12px">每個工作表可以是一班；沒有「班別」欄時用工作表名稱</span></label></div></div>`}
   </section>`;
   if (!res) return inputCard;
   const L = res.levels; const basisName = res.basisWpm ? U : '分數';
-  const pc = ty.p1.pcts; const pcSum = pc.reduce((a, b) => a + num(b), 0);
+  const pc = res.P1.pcts; const pcSum = pc.reduce((a, b) => a + num(b), 0);
   const plans = `<section class="card">
     <div class="card-head"><h3>換算方案</h3>
       <div class="row"><label class="lbl" for="tyItem">填入項目</label><select class="inp" id="tyItem" data-f="ty" data-k="itemId" style="width:auto">${sh.items.map(i => `<option value="${i.id}"${res.it && i.id === res.it.id ? ' selected' : ''}>${esc(i.name)}（/${fmtN(num(i.full))}）</option>`).join('')}</select>
-        ${res.has('score') && res.has('wpm') ? `<label class="lbl" for="tyBasis">排名依據</label><select class="inp" id="tyBasis" data-f="ty" data-k="basis" style="width:auto"><option value="score"${ty.basis !== 'wpm' ? ' selected' : ''}>分數（同分比速度）</option><option value="wpm"${ty.basis === 'wpm' ? ' selected' : ''}>速度（同速比分數）</option></select>` : ''}</div></div>
+        ${res.has('score') && res.has('wpm') ? `<label class="lbl" for="tyBasis">排名依據</label><select class="inp" id="tyBasis" data-f="ty" data-k="basis" style="width:auto"${DIS}><option value="score"${!res.basisWpm ? ' selected' : ''}>分數（同分比速度）</option><option value="wpm"${res.basisWpm ? ' selected' : ''}>速度（同速比分數）</option></select>` : ''}</div></div>
     <p class="hint">三個方案同時計算，下面的結果表並排列出，方便比較。沒有完成或零分一律 0 分。分級分數按項目滿分 ${fmtN(res.F)} 計：${L.map(fmtN).join('、')}。</p>
+    ${res.LK ? `<div class="lockbar on"><span><b>已鎖定計算方法</b>（${new Date(res.LK.at).toLocaleString('zh-HK', {dateStyle:'medium', timeStyle:'short'})}，按當時 ${res.LK.n} 位已完成的學生定出分界）。之後新增或補考的成績按同一分界計分，已有學生的分數不會改變。</span><button class="btn sm" data-act="tyUnlock">解除鎖定</button></div>`
+      : `<div class="lockbar"><span>先輸入已考學生的成績，再按「鎖定計算方法」：三個方案的分界會固定下來，之後補考學生的成績按同一分界計分，不會影響其他人。</span><button class="btn sm primary" data-act="tyLock" ${res.n ? '' : 'disabled'}>鎖定計算方法</button></div>`}
     <div class="typlans">
       <div class="typlan"><div class="row" style="justify-content:space-between"><label class="check"><input type="radio" name="typlan" data-f="ty" data-k="plan" value="rank" ${ty.plan === 'rank' ? 'checked' : ''}><b>方案一：全級排名分級</b></label></div>
-        <small>只計完成的 ${res.n} 人，按${basisName}由高至低排名，每段人數比例如下。同分一律拿較高的一級。</small>
+        <small>${res.LK ? `分界按鎖定時 ${res.LK.n} 位已完成的學生排名定出；之後加入的學生按分界歸級。` : `只計完成的 ${res.n} 人，按${basisName}由高至低排名，每段人數比例如下。同分一律拿較高的一級。`}</small>
         <div class="row" style="gap:6px">${L.map((l, k) => `<div class="field" style="width:auto"><label>${fmtN(l)} 分</label><div class="row" style="flex-wrap:nowrap;gap:2px">${tyIn('p1.pcts.' + k, pc[k], 44)}<span>%</span></div></div>`).join('')}</div>
         ${Math.abs(pcSum - 100) > 1e-6 ? `<span class="pill warn">合計 ${fmtN(pcSum)}%，應為 100%</span>` : ''}
+        ${res.LK ? `<span class="hint" style="font-size:12px">已鎖定分界：${res.LK.cuts.map((cu, k) => cu ? `${fmtN(L[k])} 分 ≥ ${fmtN(cu.main)}` : '').filter(Boolean).join('；')}（${basisName}）</span>` : ''}
         ${tyDistHTML(res, 'm1')}</div>
       <div class="typlan"><label class="check"><input type="radio" name="typlan" data-f="ty" data-k="plan" value="wpm" ${ty.plan === 'wpm' ? 'checked' : ''}><b>方案二：${U} 標準</b></label>
         <small>預先定好速度，達到就有該級分數，學生知道目標。${res.has('wpm') ? '' : '（沒有速度欄，暫用分數）'}</small>
-        <div class="row" style="gap:6px">${L.slice(0, 4).map((l, k) => `<div class="field" style="width:70px"><label>${fmtN(l)} 分：≥</label>${tyIn('p2.th.' + k, ty.p2.th[k], 58)}</div>`).join('')}<div class="field" style="width:70px"><label>${fmtN(L[4])} 分</label><span class="muted" style="font-size:12px;padding-top:6px">其餘完成者</span></div></div>
-        ${res.has('acc') ? `<div class="row"><span class="check"><input type="checkbox" data-f="ty" data-k="p2.useAcc" ${ty.p2.useAcc ? 'checked' : ''}> 準確度低於</span>${tyIn('p2.accGate', ty.p2.accGate, 52)}<span>% 降一級</span></div>` : '<span class="hint" style="font-size:12px">貼上的資料沒有準確度，不設準確度門檻。</span>'}
-        <div><button class="btn sm" data-act="tyAuto">按今次全級成績自動定分界</button></div>${TK === 'zh' ? '<span class="hint" style="font-size:12px">中文打字的預設分界只供參考，請按學生程度調整，或用自動定分界。</span>' : ''}
+        <div class="row" style="gap:6px">${L.slice(0, 4).map((l, k) => `<div class="field" style="width:70px"><label>${fmtN(l)} 分：≥</label>${tyIn('p2.th.' + k, res.P2.th[k], 58)}</div>`).join('')}<div class="field" style="width:70px"><label>${fmtN(L[4])} 分</label><span class="muted" style="font-size:12px;padding-top:6px">其餘完成者</span></div></div>
+        ${res.has('acc') ? `<div class="row"><span class="check"><input type="checkbox" data-f="ty" data-k="p2.useAcc" ${res.P2.useAcc ? 'checked' : ''}${DIS}> 準確度低於</span>${tyIn('p2.accGate', res.P2.accGate, 52)}<span>% 降一級</span></div>` : '<span class="hint" style="font-size:12px">貼上的資料沒有準確度，不設準確度門檻。</span>'}
+        <div><button class="btn sm" data-act="tyAuto"${DIS}>按今次全級成績自動定分界</button></div>${TK === 'zh' ? '<span class="hint" style="font-size:12px">中文打字的預設分界只供參考，請按學生程度調整，或用自動定分界。</span>' : ''}
         ${tyDistHTML(res, 'm2')}</div>
       <div class="typlan"><label class="check"><input type="radio" name="typlan" data-f="ty" data-k="plan" value="linear" ${ty.plan === 'linear' ? 'checked' : ''}><b>方案三：按比例計分</b></label>
-        <small>完成者最低 ${fmtN(L[4])} 分；全級最高的 ${fmtN(num(ty.p3.pct))}% 拿滿分；中間按${basisName}直線換算，沒有「差一點跌一級」的問題。</small>
-        <div class="row"><span>最高</span>${tyIn('p3.pct', ty.p3.pct, 52)}<span>% 拿滿分，取至</span><select class="inp" data-f="ty" data-k="p3.step" style="width:auto">${[[1,'整數'],[0.5,'0.5 分']].map(([v, l]) => `<option value="${v}"${num(ty.p3.step) === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+        <small>完成者最低 ${fmtN(L[4])} 分；全級最高的 ${fmtN(num(res.P3.pct))}% 拿滿分；中間按${basisName}直線換算，沒有「差一點跌一級」的問題。</small>
+        <div class="row"><span>最高</span>${tyIn('p3.pct', res.P3.pct, 52)}<span>% 拿滿分，取至</span><select class="inp" data-f="ty" data-k="p3.step" style="width:auto"${DIS}>${[[1,'整數'],[0.5,'0.5 分']].map(([v, l]) => `<option value="${v}"${num(res.P3.step) === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
         <span class="hint" style="font-size:12px">${basisName} ${fmtN(res.lo)} → ${fmtN(L[4])} 分；${basisName} ${fmtN(res.hi)} 或以上 → ${fmtN(res.F)} 分</span>
         ${tyDistHTML(res, 'm3')}</div>
     </div>
     <div class="row"><button class="btn primary" data-act="tyApply" ${res.it ? '' : 'disabled'}>把「${tyPlanName(ty.plan, U)}」填入「${esc(res.it ? res.it.name : '')}」</button><span class="hint" style="font-size:12.5px">只填入配對到的學生；沒有完成的會填 0（空白紀錄填「缺」，同樣當 0 分）。</span></div>
   </section>`;
   const key = {rank:'m1', wpm:'m2', linear:'m3'}[ty.plan];
-  const order = res.recs.slice().sort((a, b) => (a.done === b.done ? 0 : a.done ? -1 : 1) || (a.rank || 0) - (b.rank || 0) || String(a.cls).localeCompare(String(b.cls)) || (a.no || 0) - (b.no || 0));
+  const order = res.recs.slice().sort((a, b) => ((a.placeholder ? 2 : a.done ? 0 : 1) - (b.placeholder ? 2 : b.done ? 0 : 1)) || (a.rank || 0) - (b.rank || 0) || String(a.cls).localeCompare(String(b.cls)) || (a.no || 0) - (b.no || 0));
   const th = k => `<th class="num${key === k ? ' tysel' : ''}">${{m1:'方案一',m2:'方案二',m3:'方案三'}[k]}</th>`;
   const table = `<section class="card">
-    <div class="card-head"><h3>結果</h3><span class="hint">按${basisName}排名；已選的方案以黃色顯示</span></div>
+    <div class="card-head"><h3>結果</h3><span class="hint">按${basisName}排名；已選的方案以黃色顯示；未完成及沒有紀錄的學生可直接輸入補考成績</span></div>
     <div class="tbl-wrap" style="max-height:60vh"><table class="tbl tytbl"><thead><tr><th>排名</th><th>班別</th><th>班號</th><th>姓名</th><th>分數</th><th>${U}</th><th>準確度</th>${th('m1')}${th('m2')}${th('m3')}</tr></thead><tbody>
-      ${order.map(r => `<tr${r.done ? '' : ' class="muted"'}><td class="num">${r.done ? r.rank : '—'}</td><td>${esc(r.cls)}</td><td class="num">${r.no ?? ''}</td><td>${esc(r.name)}${r.match ? '' : ' <span class="pill warn">未配對</span>'}</td>
-        <td class="num">${r.score ?? '—'}</td><td class="num">${r.wpm ?? '—'}</td><td class="num">${r.acc === null ? '—' : fmtN(r.acc) + '%'}</td>
+      ${order.map(r => `<tr${r.done || r.manual ? '' : ' class="muted"'}><td class="num">${r.done ? r.rank : '—'}</td><td>${esc(r.cls)}</td><td class="num">${r.no ?? ''}</td><td>${esc(r.name)}${r.match ? '' : ' <span class="pill warn">未配對</span>'}${r.manual ? ' <span class="pill ok">補考</span>' : ''}${r.placeholder ? ' <span class="pill">沒有紀錄</span>' : ''}${r.dup ? ' <span class="pill warn">重複</span>' : ''}</td>
+        ${(r.blank || r.placeholder || r.manual) && r.match ? ['score','wpm','acc'].map(k => `<td><input class="inp num" data-f="tyMan" data-sid="${r.match.st.id}" data-k="${k}" value="${r[k] ?? ''}" inputmode="decimal" placeholder="${k === 'acc' ? '%' : '補考'}" aria-label="${esc(r.name)} ${k}" style="width:64px;padding:2px 6px"></td>`).join('')
+          : `<td class="num">${r.score ?? '—'}</td><td class="num">${r.wpm ?? '—'}</td><td class="num">${r.acc === null ? '—' : fmtN(r.acc) + '%'}</td>`}
         ${['m1','m2','m3'].map(k => `<td class="num${key === k ? ' tysel' : ''}">${r.done ? fmtN(r[k]) : 0}${k === 'm2' && r.accDrop ? ' <span class="pill" title="準確度未達標，降一級">↓</span>' : ''}</td>`).join('')}</tr>`).join('')}
     </tbody></table></div>
   </section>`;
@@ -1535,14 +1568,22 @@ function makeDemo(){
 
 /* ============ events ============ */
 const actions = {
+  tyLock(){ const sh = cur(); const ty = tyDefaults(sh); const res = tyCompute(sh); if (!res || !res.n) return;
+    const cuts = [0,1,2,3,4].map(k => { const m = res.recs.filter(r => r.done && r.b1 === k); if (!m.length) return null; const lowest = m.reduce((a, r) => (r.main < a.main || (r.main === a.main && r.sec < a.sec)) ? r : a); return {main: lowest.main, sec: lowest.sec}; });
+    ty.lock = {at: Date.now(), n: res.n, basisWpm: res.basisWpm, cuts, p1: clone(ty.p1), p2: clone(ty.p2), p3: clone(ty.p3), lo: res.lo, hi: res.hi};
+    touch(sh); renderTab(); toast('已鎖定計算方法'); },
+  tyUnlock(){ const sh = cur(); confirmModal('解除鎖定？', '解除後會按所有已完成的學生（包括補考）重新計算分界，已有學生的換算分數可能改變。已填入分紙的分數不會自動更改，要再按「填入」才會更新。', '解除鎖定', () => { const ty = tyDefaults(sh); if (ty.lock){ ty.p1 = ty.lock.p1; ty.p2 = ty.lock.p2; ty.p3 = ty.lock.p3; ty.basis = ty.lock.basisWpm ? 'wpm' : 'score'; } delete ty.lock; touch(sh); renderTab(); }); },
   tyTest(el){ const sh = cur(); tyRoot(sh).cur = el.dataset.k; touch(sh); renderTab(); },
   tyRead(){ const sh = cur(); const t = $('#tyPaste').value; if (!t.trim()){ toast('請先貼上成績'); return; } tyLoadSheets(sh, [{name:'貼上', grid: parseDelimited(t)}]); },
   tyClear(){ const sh = cur(); tyDefaults(sh).raw = null; touch(sh); renderTab(); },
   tyAuto(){ const sh = cur(); if (tyAutoThresholds(sh)){ touch(sh); renderTab(); toast('已按方案一的人數比例，定出今次的 WPM 分界'); } },
   tyApply(){ const sh = cur(); const res = tyCompute(sh); const ty = tyDefaults(sh); if (!res || !res.it) return;
-    const key = {rank:'m1', wpm:'m2', linear:'m3'}[ty.plan]; const recs = res.recs.filter(r => r.match); const U = TY_TESTS[tyKey(sh)].unit;
+    const key = {rank:'m1', wpm:'m2', linear:'m3'}[ty.plan]; const recs = res.recs.filter(r => r.match && !r.placeholder && !r.dup); const U = TY_TESTS[tyKey(sh)].unit;
     const existing = recs.filter(r => { const v = (r.match.c.scores[r.match.st.id] || {})[res.it.id]; return v !== undefined && v !== null && v !== ''; }).length;
-    const go = () => { for (const r of recs){ const c = r.match.c; c.scores[r.match.st.id] ||= {}; c.scores[r.match.st.id][res.it.id] = r.done ? r[key] : (r.blank ? '缺' : 0); }
+    const go = () => { const info = {unit: U, test: tyKey(sh), data: {}};
+      for (const r of recs){ const c = r.match.c; c.scores[r.match.st.id] ||= {}; c.scores[r.match.st.id][res.it.id] = r.done ? r[key] : (r.blank ? '缺' : 0);
+        if (!r.blank || r.score !== null || r.wpm !== null) info.data[r.match.st.id] = {score: r.score, wpm: r.wpm}; }
+      sh.typeInfo ||= {}; sh.typeInfo[res.it.id] = info;
       touch(sh); renderTab(); toast(`已把 ${recs.length} 位學生的分數填入「${res.it.name}」`); };
     if (existing) confirmModal('覆蓋現有分數？', `「${res.it.name}」已有 ${existing} 位學生的分數，填入後會改為「${tyPlanName(ty.plan, U)}」的結果。`, '覆蓋', go); else go(); },
   newSheet(){ openModal(sheetForm(null)); },
@@ -1674,6 +1715,12 @@ document.addEventListener('change', async e => {
     else c[k] = t.value;
     if (k === 'mode' && t.value === 'category'){ const tot = sh.categories.reduce((a,x) => a + num(x.weight), 0); if (!tot) autoCatWeights(sh.categories, sh.items); }
     touch(sh); renderTab(); return;
+  }
+  if (f === 'tyMan'){
+    const ty = tyDefaults(sh); ty.manual ||= {}; const sid = t.dataset.sid; const m = ty.manual[sid] ||= {};
+    const v = t.value.trim(); if (v === '') delete m[t.dataset.k]; else { const n = tyNum(v); if (n === null || n < 0){ toast('請輸入數字'); renderTab(); return; } m[t.dataset.k] = n; }
+    if (!Object.keys(m).length) delete ty.manual[sid];
+    touch(sh); renderTab(); const nk = {score:'wpm', wpm:'acc'}[t.dataset.k]; if (nk) document.querySelector(`[data-f="tyMan"][data-sid="${sid}"][data-k="${nk}"]`)?.focus(); return;
   }
   if (f === 'ty'){
     const ty = tyDefaults(sh); const path = t.dataset.k.split('.'); let o = ty; for (let i = 0; i < path.length - 1; i++) o = o[path[i]]; const last = path[path.length - 1];
