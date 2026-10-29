@@ -1,0 +1,1741 @@
+<!doctype html>
+<html lang="zh-Hant-HK">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>分紙生成工具</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@600;700&display=swap">
+<style>
+/* Layout: a teacher's mark book — ledger-ruled sheet on cool paper; sidebar of 分紙, numbered workflow tabs, spreadsheet grid as the centrepiece */
+:root{
+  --paper:#eef3f1; --sheet:#ffffff; --sheet-2:#f6f9f8; --ink:#16252c; --ink-2:#4d6068; --ink-3:#7b8d92;
+  --rule:#d6e1dd; --rule-2:#b4c6c0;
+  --accent:#17695a; --accent-ink:#ffffff; --accent-soft:#dbede8; --accent-2:#0f4e43;
+  --redpen:#b8321f; --redpen-soft:#fbe5e0; --warn:#9a5d00; --warn-soft:#fff0cf; --ok:#1d7a3c;
+  --c-ict:#2e5fc4; --c-computer:#17695a; --c-dt:#b0601a;
+  --cat-0:#e3eef9; --cat-1:#e4f2ea; --cat-2:#fbefdc; --cat-3:#f3e6f3; --cat-4:#e8ecf7; --cat-5:#f6e8e4; --cat-6:#eaf3f2; --cat-7:#f2f0e0;
+  --total-bg:#fff6d9;
+  --shadow:0 1px 0 rgba(22,37,44,.04),0 6px 18px -10px rgba(22,37,44,.18);
+  --f-body:"Noto Sans TC","Microsoft JhengHei","PingFang TC",system-ui,sans-serif;
+  --f-display:"Noto Serif TC","PMingLiU","Songti TC",serif;
+  --f-num:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --paper:#0f171a; --sheet:#152126; --sheet-2:#1a282d; --ink:#e2ebe8; --ink-2:#a3b5b0; --ink-3:#73878a;
+  --rule:#26363b; --rule-2:#3a5157;
+  --accent:#4fb69e; --accent-ink:#0b1714; --accent-soft:#183a33; --accent-2:#7fd3bf;
+  --redpen:#ff8a76; --redpen-soft:#3b1f1a; --warn:#f2b752; --warn-soft:#3a2c12; --ok:#6fd393;
+  --c-ict:#83a7f2; --c-computer:#4fb69e; --c-dt:#e69a5c;
+  --cat-0:#1b2a3a; --cat-1:#1a3026; --cat-2:#352a17; --cat-3:#2f2032; --cat-4:#212842; --cat-5:#36231f; --cat-6:#1a3231; --cat-7:#2f2d1b;
+  --total-bg:#3a3217;
+  --shadow:0 1px 0 rgba(0,0,0,.2),0 8px 20px -12px rgba(0,0,0,.6);
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#0f171a; --sheet:#152126; --sheet-2:#1a282d; --ink:#e2ebe8; --ink-2:#a3b5b0; --ink-3:#73878a;
+  --rule:#26363b; --rule-2:#3a5157;
+  --accent:#4fb69e; --accent-ink:#0b1714; --accent-soft:#183a33; --accent-2:#7fd3bf;
+  --redpen:#ff8a76; --redpen-soft:#3b1f1a; --warn:#f2b752; --warn-soft:#3a2c12; --ok:#6fd393;
+  --c-ict:#83a7f2; --c-computer:#4fb69e; --c-dt:#e69a5c;
+  --cat-0:#1b2a3a; --cat-1:#1a3026; --cat-2:#352a17; --cat-3:#2f2032; --cat-4:#212842; --cat-5:#36231f; --cat-6:#1a3231; --cat-7:#2f2d1b;
+  --total-bg:#3a3217;
+  --shadow:0 1px 0 rgba(0,0,0,.2),0 8px 20px -12px rgba(0,0,0,.6);
+  color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{min-height:100%}
+body{background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.55}
+button,input,select,textarea{font:inherit;color:inherit}
+h1,h2,h3{margin:0;text-wrap:balance}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+.app{display:grid;grid-template-columns:268px minmax(0,1fr);min-height:100vh}
+.side{background:var(--sheet);border-right:1px solid var(--rule);padding-block:22px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:16px;display:flex;flex-direction:column;gap:18px}
+.main{min-width:0;padding-block:22px 48px;padding-left:28px;padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:18px}
+@media (max-width:860px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .side{border-right:0;border-bottom:1px solid var(--rule);padding-right:max(16px,env(safe-area-inset-right,0px))}
+  .main{padding-left:max(16px,env(safe-area-inset-left,0px))}
+  .sheet-list{flex-direction:row!important;overflow-x:auto;padding-bottom:4px}
+  .sheet-group{min-width:max-content}
+}
+
+.brand{display:flex;flex-direction:column;gap:2px}
+.brand b{font-family:var(--f-display);font-size:26px;letter-spacing:.04em;line-height:1.1}
+.brand span{color:var(--ink-3);font-size:12px;letter-spacing:.12em}
+.status{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-2)}
+.status i{width:8px;height:8px;border-radius:50%;background:var(--ink-3);flex:none}
+.status[data-s="saved"] i{background:var(--ok)}
+.status[data-s="saving"] i,.status[data-s="pending"] i{background:var(--warn)}
+.status[data-s="error"] i{background:var(--redpen)}
+
+.sheet-list{display:flex;flex-direction:column;gap:14px}
+.sheet-group{display:flex;flex-direction:column;gap:4px}
+.sheet-group h4{margin:0 0 2px;font-size:11px;letter-spacing:.14em;color:var(--ink-3);font-weight:600;display:flex;align-items:center;gap:6px}
+.dot{width:8px;height:8px;border-radius:2px;display:inline-block;flex:none}
+.sheet-btn{all:unset;cursor:pointer;display:flex;flex-direction:column;gap:1px;padding:8px 10px;border-radius:8px;border:1px solid transparent}
+.sheet-btn:hover{background:var(--sheet-2)}
+.sheet-btn:focus-visible{outline:2px solid var(--accent)}
+.sheet-btn[aria-current="true"]{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 30%,transparent)}
+.sheet-btn b{font-weight:600;font-size:14px}
+.sheet-btn small{color:var(--ink-3);font-size:12px}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--rule-2);background:var(--sheet);border-radius:8px;padding:7px 13px;cursor:pointer;font-weight:500;font-size:13.5px;white-space:nowrap;transition:background .12s,border-color .12s}
+.btn:hover{background:var(--sheet-2);border-color:var(--ink-3)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.primary:hover{background:var(--accent-2);border-color:var(--accent-2)}
+.btn.danger{color:var(--redpen);border-color:color-mix(in srgb,var(--redpen) 45%,transparent)}
+.btn.danger:hover{background:var(--redpen-soft)}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn.ghost:hover{background:var(--sheet-2)}
+.btn.sm{padding:4px 9px;font-size:12.5px;border-radius:6px}
+.btn.icon{padding:3px 7px;font-size:13px;border-radius:6px;min-width:28px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+.head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+.head h1{font-family:var(--f-display);font-size:28px;line-height:1.2;letter-spacing:.02em}
+.meta{color:var(--ink-2);font-size:13px;display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:4px}
+.subj-tag{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;letter-spacing:.06em;padding:2px 8px;border-radius:5px;border:1px solid currentColor}
+
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--rule);overflow-x:auto}
+.tab{all:unset;cursor:pointer;padding:10px 14px 9px;display:flex;align-items:center;gap:8px;font-weight:500;color:var(--ink-2);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.tab span{font-family:var(--f-num);font-size:11px;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--rule-2);color:var(--ink-3)}
+.tab:hover{color:var(--ink)}
+.tab:focus-visible{outline:2px solid var(--accent)}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.tab[aria-selected="true"] span{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+
+.card{background:var(--sheet);border:1px solid var(--rule);border-radius:12px;padding:18px 20px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:14px;min-width:0}
+.card h3{font-size:16px;font-weight:700}
+.card-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}
+.hint{color:var(--ink-2);font-size:13px;margin:0;max-width:72ch}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.sub{border:1px dashed var(--rule-2);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.sub h4{margin:0;font-size:14px}
+
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field>label,.lbl{font-size:12px;color:var(--ink-2);font-weight:500}
+.inp,select.inp,textarea.inp{border:1px solid var(--rule-2);background:var(--sheet);border-radius:7px;padding:6px 9px;min-width:0;width:100%}
+.inp:focus{outline:2px solid color-mix(in srgb,var(--accent) 55%,transparent);outline-offset:0;border-color:var(--accent)}
+textarea.inp{min-height:110px;resize:vertical;font-family:var(--f-num);font-size:12.5px}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+.inp::placeholder,textarea::placeholder{color:var(--ink-3);opacity:.75}
+.check{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13.5px}
+.check input{accent-color:var(--accent);width:16px;height:16px}
+
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;border:1px solid var(--rule-2);font-weight:500;font-size:13.5px;background:var(--sheet)}
+.chip:hover{border-color:var(--ink-3)}
+.chip:focus-visible{outline:2px solid var(--accent)}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--sheet);border-color:var(--ink)}
+.chip .count{font-size:11.5px;opacity:.7;font-family:var(--f-num)}
+.chip.add{border-style:dashed;color:var(--ink-2)}
+
+.tbl-wrap{overflow:auto;border:1px solid var(--rule);border-radius:10px;max-width:100%}
+table.tbl{border-collapse:collapse;width:100%;font-size:13.5px}
+.tbl th,.tbl td{border-bottom:1px solid var(--rule);padding:6px 8px;text-align:left;vertical-align:middle}
+.tbl th{background:var(--sheet-2);font-size:12px;color:var(--ink-2);font-weight:600;white-space:nowrap}
+.tbl td .inp{padding:4px 7px}
+.tbl tr:last-child td{border-bottom:0}
+.tbl .w-no{width:70px}.tbl .w-num{width:92px}.tbl .w-act{width:1%;white-space:nowrap}
+.cat-band td{background:var(--sheet-2);font-weight:600}
+
+/* score grid */
+.grid-wrap{overflow:auto;max-height:72vh;border:1px solid var(--rule-2);border-radius:10px;background:var(--sheet)}
+table.g{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%}
+.g th,.g td{border-right:1px solid var(--rule);border-bottom:1px solid var(--rule);padding:0;white-space:nowrap}
+.g thead th{position:sticky;background:var(--sheet-2);z-index:2;font-weight:600;padding:5px 8px;text-align:center}
+.g thead tr:nth-child(1) th{top:0;height:30px}
+.g thead tr:nth-child(2) th{top:30px;height:44px}
+.g thead tr:nth-child(3) th{top:74px;height:28px;font-weight:400}
+.g .stick1{position:sticky;left:0;z-index:3;background:var(--sheet)}
+.g .stick2{position:sticky;left:52px;z-index:3;background:var(--sheet);border-right:2px solid var(--rule-2)}
+.g thead .stick1,.g thead .stick2{z-index:4;background:var(--sheet-2)}
+.g td.no{width:52px;min-width:52px;text-align:center;font-family:var(--f-num);color:var(--ink-2);padding:0 6px}
+.g td.nm{min-width:120px;max-width:190px;padding:3px 10px;overflow:hidden;text-overflow:ellipsis}
+.g td.nm small{display:block;color:var(--ink-3);font-size:11px;line-height:1.2}
+.g .iname{display:block;max-width:150px;white-space:normal;line-height:1.25;font-size:12.5px}
+.g .ifull{font-family:var(--f-num);font-size:11.5px;color:var(--ink-2);display:inline-flex;gap:4px;align-items:center}
+.g .ifull .btn{padding:0 5px;font-size:11px;border-radius:4px;min-width:0}
+.g input.sc{all:unset;box-sizing:border-box;width:100%;min-width:64px;height:34px;text-align:center;font-family:var(--f-num);font-variant-numeric:tabular-nums;font-size:13.5px;cursor:text}
+.g input.sc:focus{background:var(--accent-soft);box-shadow:inset 0 0 0 2px var(--accent)}
+.g input.sc.bad{background:var(--redpen-soft);color:var(--redpen)}
+.g input.sc.over{color:var(--redpen);font-weight:600}
+.g input.sc.txt{color:var(--warn);font-family:var(--f-body)}
+.g td.tot,.g th.tot{background:var(--total-bg);text-align:center;font-family:var(--f-num);font-weight:600;min-width:76px;padding:0 8px;position:sticky;right:0;z-index:1;border-left:2px solid var(--rule-2)}
+.g thead th.tot{z-index:3}
+.g td.tot.low{color:var(--redpen)}
+.g td.catv{text-align:center;font-family:var(--f-num);color:var(--ink-2);min-width:70px;padding:0 6px}
+.g tfoot td{background:var(--sheet-2);font-family:var(--f-num);text-align:center;color:var(--ink-2);height:32px;position:sticky;bottom:0;z-index:2}
+.g tfoot td.stick1,.g tfoot td.stick2{z-index:4;background:var(--sheet-2);font-family:var(--f-body)}
+.g tfoot td.tot{z-index:3;background:var(--total-bg)}
+.g tbody tr:hover td{background-image:linear-gradient(color-mix(in srgb,var(--accent) 6%,transparent),color-mix(in srgb,var(--accent) 6%,transparent))}
+.c0{background:var(--cat-0)!important}.c1{background:var(--cat-1)!important}.c2{background:var(--cat-2)!important}.c3{background:var(--cat-3)!important}
+.c4{background:var(--cat-4)!important}.c5{background:var(--cat-5)!important}.c6{background:var(--cat-6)!important}.c7{background:var(--cat-7)!important}
+
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--ink-2)}
+.legend code{font-family:var(--f-num);background:var(--sheet-2);border:1px solid var(--rule);border-radius:4px;padding:0 5px;color:var(--ink)}
+
+.formula{font-family:var(--f-body);background:var(--sheet-2);border:1px solid var(--rule);border-left:3px solid var(--accent);border-radius:8px;padding:12px 14px;line-height:1.9;font-size:14px;overflow-wrap:anywhere}
+.formula .op{font-family:var(--f-num);color:var(--ink-3);padding:0 2px}
+.formula .term{display:inline-block;background:var(--sheet);border:1px solid var(--rule);border-radius:5px;padding:0 6px;line-height:1.6;margin:1px 0}
+.formula .term.bonus{border-style:dashed}
+.formula b{color:var(--accent)}
+
+.modes{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
+.mode{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--rule-2);border-radius:10px;padding:12px 14px;cursor:pointer}
+.mode:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
+.mode input{accent-color:var(--accent);margin-top:4px}
+.mode b{display:block}
+.mode small{color:var(--ink-2);font-size:12.5px;line-height:1.5;display:block}
+
+.subjects{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.subj{border:1px solid var(--rule-2);border-radius:10px;padding:10px 12px;cursor:pointer;display:flex;flex-direction:column;gap:2px}
+.subj:has(input:checked){border-color:currentColor;box-shadow:inset 0 0 0 1px currentColor}
+.subj input{position:absolute;opacity:0;pointer-events:none}
+.subj b{font-size:18px;font-family:var(--f-display)}
+.subj small{color:var(--ink-2);font-size:11.5px}
+
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.stat{border:1px solid var(--rule);border-radius:10px;padding:10px 12px;background:var(--sheet-2)}
+.stat small{display:block;color:var(--ink-2);font-size:12px}
+.stat b{font-family:var(--f-num);font-size:22px;font-weight:600}
+
+.pill{display:inline-block;font-size:11.5px;padding:1px 8px;border-radius:999px;background:var(--sheet-2);border:1px solid var(--rule);color:var(--ink-2);white-space:nowrap}
+.pill.warn{background:var(--warn-soft);color:var(--warn);border-color:transparent}
+.pill.ok{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.pill.bad{background:var(--redpen-soft);color:var(--redpen);border-color:transparent}
+
+.empty{display:flex;flex-direction:column;gap:16px;align-items:flex-start;max-width:640px;padding:36px 4px}
+.empty h1{font-family:var(--f-display);font-size:34px;line-height:1.2}
+.empty p{color:var(--ink-2);margin:0;font-size:15px}
+.steps{display:grid;gap:8px;margin:4px 0;padding:0;list-style:none;counter-reset:s}
+.steps li{display:flex;gap:10px;align-items:baseline;counter-increment:s}
+.steps li::before{content:counter(s);font-family:var(--f-num);font-size:11px;width:20px;height:20px;flex:none;border-radius:50%;display:grid;place-items:center;border:1px solid var(--rule-2);color:var(--ink-2)}
+
+.drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:1.5px dashed var(--rule-2);border-radius:10px;padding:18px 12px;text-align:center;cursor:pointer;color:var(--ink-2);font-size:13px;background:var(--sheet-2)}
+.drop:hover,.drop.over{border-color:var(--accent);color:var(--ink)}
+.drop b{color:var(--accent)}
+.drop input{position:absolute;opacity:0;width:1px;height:1px}
+
+.preview{display:flex;flex-direction:column;gap:8px;border:1px solid var(--accent);background:var(--accent-soft);border-radius:10px;padding:14px}
+.prev-row{display:grid;grid-template-columns:auto 110px auto minmax(0,1fr);gap:10px;align-items:center;background:var(--sheet);border:1px solid var(--rule);border-radius:8px;padding:8px 10px}
+.prev-row small{color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+@media (max-width:560px){.prev-row{grid-template-columns:auto 1fr auto}.prev-row small{grid-column:1/-1}}
+
+.overlay{position:fixed;inset:0;background:color-mix(in srgb,var(--ink) 45%,transparent);display:grid;place-items:center;z-index:50;padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.modal{background:var(--sheet);border:1px solid var(--rule-2);border-radius:14px;box-shadow:0 20px 60px -20px rgba(0,0,0,.45);width:min(620px,100%);max-height:calc(100vh - 40px);overflow:auto;padding:20px 22px;display:flex;flex-direction:column;gap:14px}
+.modal h2{font-family:var(--f-display);font-size:22px}
+.modal .foot{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.form2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:520px){.form2{grid-template-columns:minmax(0,1fr)}.subjects{grid-template-columns:minmax(0,1fr)}}
+
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--sheet);padding:9px 16px;border-radius:9px;font-size:13.5px;z-index:60;box-shadow:var(--shadow);max-width:calc(100% - 32px)}
+.muted{color:var(--ink-3)}
+.sumline{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;font-size:13.5px;color:var(--ink-2)}
+.sumline b{color:var(--ink);font-family:var(--f-num)}
+.typlans{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+.typlan{display:flex;flex-direction:column;gap:10px;border:1px solid var(--rule-2);border-radius:10px;padding:14px;cursor:default;min-width:0}
+.typlan:has(input[type=radio]:checked){border-color:var(--accent);background:var(--accent-soft)}
+.typlan input[type=radio]{accent-color:var(--accent);width:16px;height:16px}
+.typlan small{color:var(--ink-2);font-size:12.5px;line-height:1.5}
+.tybars{display:flex;flex-direction:column;gap:3px}
+.tybar{display:grid;grid-template-columns:38px minmax(0,1fr) 30px;gap:6px;align-items:center;font-size:12px}
+.tybar i{display:block;height:10px;border-radius:3px;background:var(--accent);min-width:2px}
+.tybar b{font-weight:500;text-align:right}
+.tytbl td,.tytbl th{white-space:nowrap}
+.tytbl .tysel{background:var(--total-bg)!important;font-weight:600}
+.mono{font-family:var(--f-num)}
+</style>
+
+<div class="app">
+  <aside class="side" id="side"></aside>
+  <main class="main" id="main"></main>
+</div>
+<div id="modalRoot"></div>
+<div id="toastRoot"></div>
+
+<script>
+"use strict";
+/* ============ constants ============ */
+const SUBJ = {
+  ict:      {name:'ICT', full:'資訊及通訊科技', color:'var(--c-ict)', blurb:'功課・測驗・課堂表現'},
+  computer: {name:'電腦', full:'電腦科', color:'var(--c-computer)', blurb:'功課・堂課・默書・評估'},
+  dt:       {name:'DT', full:'設計與科技', color:'var(--c-dt)', blurb:'繪圖・習作・製作・測驗'}
+};
+const SUBJ_ORDER = ['ict','computer','dt'];
+const FORMS = ['F1','F2','F3','F4','F5','F6'];
+const FORM_ZH = {F1:'中一',F2:'中二',F3:'中三',F4:'中四',F5:'中五',F6:'中六'};
+const TERMS = ['第一學期','第二學期','全年'];
+const CAT_PRESETS = ['堂課','功課','測驗','默書','課堂表現','評估','專題研習','實作','考試'];
+const LS_KEY = 'marksheet-tool-v1';
+const LS_UI = 'marksheet-tool-ui';
+
+/* ============ state ============ */
+const S = { sheets:[], settings:{school:'', teacher:''}, curId:null, tab:'roster', classId:null, importPreview:null, storage:'local' };
+
+/* ============ helpers ============ */
+const $ = (sel, root=document) => root.querySelector(sel);
+const uid = p => p + Date.now().toString(36).slice(-5) + Math.random().toString(36).slice(2,6);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num = v => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
+function roundTo(x, d){ const m = 10 ** d; return Math.sign(x) * Math.round(Math.abs(x) * m + 1e-9) / m; }
+function fmt(x, d){ if (x === null || x === undefined || !Number.isFinite(x)) return '—'; return roundTo(x, d).toFixed(d); }
+function fmtN(x){ if (!Number.isFinite(x)) return '—'; return String(roundTo(x, 2)); }
+function schoolYear(){ const d = new Date(); const y = d.getFullYear(); return d.getMonth() >= 7 ? `${y}-${y+1}` : `${y-1}-${y}`; }
+function clone(o){ return JSON.parse(JSON.stringify(o)); }
+const cur = () => S.sheets.find(s => s.id === S.curId) || null;
+const curClass = sh => sh ? (sh.classes.find(c => c.id === S.classId) || sh.classes[0] || null) : null;
+function sheetTitle(sh){ return `${FORM_ZH[sh.form] || sh.form} ${SUBJ[sh.subject].name}`; }
+function stuName(st){ return st.zh || st.en || '（未命名）'; }
+function catIndex(sh, catId){ return Math.max(0, sh.categories.findIndex(c => c.id === catId)) % 8; }
+function orderedItems(sh){
+  const order = new Map(sh.categories.map((c,i) => [c.id, i]));
+  return sh.items.map((it, i) => [it, i]).sort((a,b) => ((order.get(a[0].catId) ?? 999) - (order.get(b[0].catId) ?? 999)) || a[1]-b[1]).map(x => x[0]);
+}
+function sumWeights(sh){ return sh.items.filter(i => !i.bonus).reduce((a,i) => a + num(i.weight), 0); }
+
+/* ============ templates ============ */
+function makeTemplate(subject){
+  const cat = name => ({id: uid('c'), name, weight: 0});
+  const item = (c, name, full, weight, extra={}) => ({id: uid('i'), catId: c.id, name, content:'', date:'', full, weight: weight ?? full, bonus:false, ...extra});
+  if (subject === 'computer'){
+    const hw = cat('功課'), cw = cat('堂課'), dict = cat('默書'), ass = cat('評估'), cp = cat('課堂表現');
+    const cats = [hw, cw, dict, ass, cp];
+    const items = [
+      item(hw,'掃瞄功課',8), item(hw,'電子安全',18), item(hw,'第一章習作1',22), item(hw,'第一章習作2',18),
+      item(cw,'40分堂課',40), item(dict,'英文生字默書',7.5,33), item(ass,'英文打字',50), item(cp,'課堂表現',30)
+    ];
+    autoCatWeights(cats, items);
+    return {categories: cats, items, calc:{mode:'item', total:50, cap:true, decimals:1, blank:'zero', catMethod:'sum'}};
+  }
+  if (subject === 'dt'){
+    const dr = cat('繪圖'), de = cat('設計習作'), mk = cat('製作習作'), ts = cat('測驗'), cp = cat('課堂表現');
+    const cats = [dr, de, mk, ts, cp];
+    const items = [
+      item(dr,'均角投影法 (A2)',20,20), item(dr,'繪圖 bonus',8,2,{bonus:true}),
+      item(de,'電路圖 (B2)',40,25), item(mk,'紙電路製作 (C2)',40,30), item(ts,'測驗',26,20), item(cp,'課堂表現',10,5)
+    ];
+    autoCatWeights(cats, items);
+    return {categories: cats, items, calc:{mode:'item', total:50, cap:true, decimals:1, blank:'zero', catMethod:'sum'}};
+  }
+  const hw = cat('功課'), ts = cat('測驗'), cp = cat('課堂表現');
+  hw.weight = 30; ts.weight = 50; cp.weight = 20;
+  const items = [ item(hw,'功課 1',20), item(hw,'功課 2',20), item(ts,'測驗 1',50), item(cp,'課堂表現',10) ];
+  return {categories:[hw, ts, cp], items, calc:{mode:'category', total:100, cap:true, decimals:1, blank:'zero', catMethod:'sum'}};
+}
+function autoCatWeights(cats, items){
+  const tot = items.filter(i => !i.bonus).reduce((a,i) => a + num(i.weight), 0) || 1;
+  let acc = 0;
+  cats.forEach((c, k) => {
+    const w = items.filter(i => !i.bonus && i.catId === c.id).reduce((a,i) => a + num(i.weight), 0);
+    c.weight = k === cats.length - 1 ? Math.max(0, roundTo(100 - acc, 1)) : roundTo(w / tot * 100, 1);
+    acc += c.weight;
+  });
+}
+function newSheet(o){
+  const t = o.template || makeTemplate(o.subject);
+  return {
+    id: uid('m'), subject:o.subject, form:o.form, year:o.year, term:o.term, teacher:o.teacher || '',
+    categories: t.categories, items: t.items, calc: t.calc,
+    classes: o.classes || [], createdAt: Date.now(), updatedAt: Date.now()
+  };
+}
+function copyScheme(src){
+  const map = {}; const cats = src.categories.map(c => { const n = {...c, id: uid('c')}; map[c.id] = n.id; return n; });
+  const items = src.items.map(i => ({...i, id: uid('i'), catId: map[i.catId]}));
+  return {categories: cats, items, calc: clone(src.calc)};
+}
+function copyClasses(src, ids){
+  return src.classes.filter(c => !ids || ids.includes(c.id)).map(c => ({id: uid('k'), name: c.name, students: c.students.map(s => ({...s, id: uid('s')})), scores:{}}));
+}
+
+/* ============ calculation ============ */
+function itemState(sh, v){
+  if (v === '免') return {inc:false};
+  if (v === '缺') return {inc:true, n:0};
+  if (v === undefined || v === null || v === '') return sh.calc.blank === 'zero' ? {inc:true, n:0, blank:true} : {inc:false, blank:true};
+  return {inc:true, n:+v};
+}
+function computeStudent(sh, sc){
+  sc = sc || {};
+  const c = sh.calc, T = num(c.total), items = orderedItems(sh);
+  if (!items.some(it => sc[it.id] !== undefined && sc[it.id] !== null && sc[it.id] !== '')) return {total:null, cats:{}, bonus:0, empty:true};
+  let bonus = 0;
+  for (const it of items) if (it.bonus){ const s = itemState(sh, sc[it.id]); if (s.inc && num(it.full) > 0) bonus += s.n / num(it.full) * num(it.weight); }
+  let base = null; const cats = {};
+  if (c.mode === 'item'){
+    let n = 0, d = 0;
+    for (const it of items){ if (it.bonus) continue; const s = itemState(sh, sc[it.id]); if (!s.inc || !(num(it.full) > 0)) continue; n += s.n / num(it.full) * num(it.weight); d += num(it.weight); }
+    if (d > 0) base = n / d * T;
+  } else {
+    let acc = 0, ws = 0;
+    for (const cat of sh.categories){
+      const its = items.filter(i => !i.bonus && i.catId === cat.id);
+      if (!its.length) continue;
+      const inc = its.map(i => [i, itemState(sh, sc[i.id])]).filter(([i,s]) => s.inc && num(i.full) > 0);
+      if (!inc.length){ cats[cat.id] = null; continue; }
+      const frac = c.catMethod === 'avg' ? inc.reduce((a,[i,s]) => a + s.n / num(i.full), 0) / inc.length
+                                          : inc.reduce((a,[i,s]) => a + s.n, 0) / inc.reduce((a,[i]) => a + num(i.full), 0);
+      cats[cat.id] = frac * num(cat.weight); acc += frac * num(cat.weight); ws += num(cat.weight);
+    }
+    if (ws > 0) base = acc / ws * T;
+  }
+  if (base === null) return {total:null, cats, bonus};
+  let t = base + bonus; if (c.cap) t = Math.min(T, t);
+  return {total: roundTo(t, +c.decimals), cats, bonus};
+}
+function classStats(sh, cls){
+  const totals = cls.students.map(st => computeStudent(sh, cls.scores[st.id]).total).filter(x => x !== null);
+  const T = num(sh.calc.total);
+  const avg = totals.length ? totals.reduce((a,b) => a+b, 0) / totals.length : null;
+  let blanks = 0, blankItems = new Set();
+  for (const st of cls.students) for (const it of sh.items){ const v = (cls.scores[st.id]||{})[it.id]; if (v === undefined || v === '' || v === null){ blanks++; blankItems.add(it.name); } }
+  return {n: cls.students.length, done: totals.length, avg, max: totals.length ? Math.max(...totals) : null, min: totals.length ? Math.min(...totals) : null, low: totals.filter(t => t < T/2).length, blanks, blankItems:[...blankItems]};
+}
+
+/* ============ storage ============ */
+let DB = null, BASE = null, saveTimer = null, lsTimer = null, saving = false;
+const dirty = new Set();
+function lsLoad(){ try { return JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch { return null; } }
+function lsSave(){ try { localStorage.setItem(LS_KEY, JSON.stringify({sheets:S.sheets, settings:S.settings})); } catch {} }
+function uiSave(){ try { localStorage.setItem(LS_UI, JSON.stringify({curId:S.curId, tab:S.tab, classId:S.classId})); } catch {} }
+function uiLoad(){ try { return JSON.parse(localStorage.getItem(LS_UI) || 'null'); } catch { return null; } }
+function setStatus(s, msg){
+  const el = $('#status'); if (!el) return;
+  const text = {
+    saved: DB ? '已儲存到你的帳戶' : '已儲存在這個瀏覽器',
+    pending: '有未儲存的修改…', saving: '儲存中…',
+    error: msg || '未能儲存，稍後會再試',
+    local: '已儲存在這個瀏覽器'
+  }[s] || '';
+  el.dataset.s = s; el.querySelector('span').textContent = text;
+}
+function touch(sh){
+  if (sh){ sh.updatedAt = Date.now(); dirty.add(sh.id); }
+  clearTimeout(lsTimer); lsTimer = setTimeout(lsSave, 250);
+  setStatus('pending');
+  clearTimeout(saveTimer); saveTimer = setTimeout(flush, 900);
+}
+async function flush(){
+  if (!DB){ dirty.clear(); lsSave(); setStatus('saved'); return; }
+  if (saving){ clearTimeout(saveTimer); saveTimer = setTimeout(flush, 600); return; }
+  saving = true; setStatus('saving');
+  let failed = null;
+  while (dirty.size){
+    const id = dirty.values().next().value; dirty.delete(id);
+    const sh = S.sheets.find(s => s.id === id); if (!sh) continue;
+    const stamp = sh.updatedAt;
+    const body = clone(sh); delete body.syncedAt;
+    try { await DB.doc(`${BASE}/ms_${id}`).set(body); sh.syncedAt = stamp; }
+    catch (e){ dirty.add(id); failed = e; break; }
+  }
+  saving = false; lsSave();
+  if (failed){
+    const code = failed && failed.code;
+    if (code === 'quota_exceeded') setStatus('error', '儲存空間已滿，請刪除舊分紙');
+    else setStatus('error');
+    if (code === 'unavailable' || code === 'resource_exhausted' || !code){ clearTimeout(saveTimer); saveTimer = setTimeout(flush, 5000); }
+  } else setStatus('saved');
+}
+async function saveSettings(){
+  lsSave();
+  if (DB){ try { await DB.doc(`${BASE}/settings`).set({settings: S.settings}); } catch {} }
+}
+async function removeSheet(id){
+  S.sheets = S.sheets.filter(s => s.id !== id); dirty.delete(id);
+  if (S.curId === id){ S.curId = S.sheets[0]?.id || null; S.classId = null; }
+  lsSave(); uiSave();
+  if (DB){ try { await DB.doc(`${BASE}/ms_${id}`).delete(); } catch (e){ toast('雲端刪除失敗，請稍後再試'); } }
+}
+async function initCloud(){
+  try {
+    if (!window.claude || typeof window.claude.use !== 'function') return;
+    const [db, user] = await Promise.all([window.claude.use('db'), window.claude.use('user')]);
+    if (!db || !user) return;
+    const id = await user.id(); if (!id) return;
+    const base = `data/users/${id}`;
+    const snap = await db.collection(base).get();
+    const remote = {}; let rset = null;
+    snap.docs.forEach(d => { const v = d.data(); if (!v) return; if (d.id === 'settings') rset = v.settings; else if (d.id.startsWith('ms_') && v.id) remote[v.id] = clone(v); });
+    const merged = {...remote}; const up = [];
+    for (const s of S.sheets){
+      const r = remote[s.id];
+      if (r){ if ((s.updatedAt||0) > (r.updatedAt||0)){ merged[s.id] = s; up.push(s.id); } }
+      else if (!s.syncedAt){ merged[s.id] = s; up.push(s.id); }   // never synced: keep and upload
+      /* else: was synced before but now gone from the account → deleted on another device */
+    }
+    DB = db; BASE = base; S.storage = 'cloud';
+    S.sheets = Object.values(merged).sort((a,b) => (a.createdAt||0) - (b.createdAt||0));
+    for (const s of S.sheets) if (remote[s.id] && !up.includes(s.id)) s.syncedAt = s.updatedAt;
+    if (rset) S.settings = {...S.settings, ...rset};
+    if (!S.sheets.find(s => s.id === S.curId)) S.curId = S.sheets[0]?.id || null;
+    lsSave(); renderAll();
+    if (up.length){ up.forEach(i => dirty.add(i)); flush(); } else setStatus('saved');
+  } catch (e){ console.warn('cloud init failed', e); }
+}
+
+/* ============ downloads ============ */
+async function saveFile(filename, blob){
+  let dl = null;
+  try { dl = (window.claude && typeof window.claude.use === 'function') ? await window.claude.use('downloads') : null; } catch {}
+  if (dl){
+    try { await dl.save({filename, data: blob}); toast('已下載：' + filename); }
+    catch (e){ toast(e && e.code === 'declined' ? '已取消下載' : '未能下載（' + ((e && (e.message || e.code)) || '未知原因') + '）'); }
+    return;
+  }
+  const url = URL.createObjectURL(blob); const a = document.createElement('a');
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+/* ============ zip (store) + xlsx writer ============ */
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++){ let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(u8){ let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC_T[(c ^ u8[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function zipStore(files){
+  const enc = new TextEncoder(); const parts = [], cen = []; let off = 0;
+  for (const f of files){
+    const name = enc.encode(f.name), data = typeof f.data === 'string' ? enc.encode(f.data) : f.data, crc = crc32(data);
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0,0x04034b50,true); lh.setUint16(4,20,true); lh.setUint16(6,0x0800,true); lh.setUint16(8,0,true);
+    lh.setUint16(10,0,true); lh.setUint16(12,33,true); lh.setUint32(14,crc,true); lh.setUint32(18,data.length,true);
+    lh.setUint32(22,data.length,true); lh.setUint16(26,name.length,true); lh.setUint16(28,0,true);
+    parts.push(lh.buffer, name, data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0,0x02014b50,true); ch.setUint16(4,20,true); ch.setUint16(6,20,true); ch.setUint16(8,0x0800,true);
+    ch.setUint16(10,0,true); ch.setUint16(12,0,true); ch.setUint16(14,33,true); ch.setUint32(16,crc,true);
+    ch.setUint32(20,data.length,true); ch.setUint32(24,data.length,true); ch.setUint16(28,name.length,true);
+    ch.setUint16(30,0,true); ch.setUint16(32,0,true); ch.setUint16(34,0,true); ch.setUint16(36,0,true);
+    ch.setUint32(38,0,true); ch.setUint32(42,off,true);
+    cen.push(ch.buffer, name);
+    off += 30 + name.length + data.length;
+  }
+  const cenSize = cen.reduce((a,b) => a + b.byteLength, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0,0x06054b50,true); end.setUint16(8,files.length,true); end.setUint16(10,files.length,true);
+  end.setUint32(12,cenSize,true); end.setUint32(16,off,true);
+  return new Blob([...parts, ...cen, end.buffer], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+function colName(c){ let s = ''; while (c > 0){ const m = (c-1) % 26; s = String.fromCharCode(65+m) + s; c = Math.floor((c-1)/26); } return s; }
+const A1 = (r, c) => colName(c) + r;
+const xesc = s => String(s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+class XSheet{
+  constructor(name){ this.name = name; this.rows = new Map(); this.merges = []; this.widths = {}; this.heights = {}; this.freeze = null; this.printRows = null; this.page = {orient:'landscape', fitH:0, area:null}; this.validations = []; this.protect = false; }
+  set(r, c, v, s = 0, f = null){ if (!this.rows.has(r)) this.rows.set(r, new Map()); this.rows.get(r).set(c, {v, s, f}); }
+  merge(r1, c1, r2, c2, s){ if (s !== undefined) for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) if (!(this.rows.get(r)?.has(c))) this.set(r, c, null, s); if (r1 !== r2 || c1 !== c2) this.merges.push(`${A1(r1,c1)}:${A1(r2,c2)}`); }
+  xml(){
+    let o = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">';
+    o += '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><sheetViews><sheetView workbookViewId="0"' + (this.freeze ? '' : ' tabSelected="0"') + '>';
+    if (this.freeze){ const {x, y} = this.freeze; o += `<pane${x?` xSplit="${x}"`:''}${y?` ySplit="${y}"`:''} topLeftCell="${A1(y+1, x+1)}" activePane="${x && y ? 'bottomRight' : (y ? 'bottomLeft' : 'topRight')}" state="frozen"/>`; }
+    o += '</sheetView></sheetViews><sheetFormatPr defaultRowHeight="18"/>';
+    const wk = Object.keys(this.widths).map(Number).sort((a,b) => a-b);
+    if (wk.length){ o += '<cols>' + wk.map(c => `<col min="${c}" max="${c}" width="${this.widths[c]}" customWidth="1"/>`).join('') + '</cols>'; }
+    o += '<sheetData>';
+    for (const r of [...this.rows.keys()].sort((a,b) => a-b)){
+      const cells = this.rows.get(r); const h = this.heights[r];
+      o += `<row r="${r}"${h ? ` ht="${h}" customHeight="1"` : ''}>`;
+      for (const c of [...cells.keys()].sort((a,b) => a-b)){
+        const {v, s, f} = cells.get(c); const ref = A1(r, c); const st = s ? ` s="${s}"` : '';
+        if (f){
+          if (typeof v === 'string') o += `<c r="${ref}"${st} t="str"><f>${xesc(f)}</f><v>${xesc(v)}</v></c>`;
+          else o += `<c r="${ref}"${st}><f>${xesc(f)}</f>${Number.isFinite(v) ? `<v>${v}</v>` : ''}</c>`;
+        } else if (v === null || v === undefined || v === '') o += `<c r="${ref}"${st}/>`;
+        else if (typeof v === 'number' && Number.isFinite(v)) o += `<c r="${ref}"${st}><v>${v}</v></c>`;
+        else o += `<c r="${ref}"${st} t="inlineStr"><is><t xml:space="preserve">${xesc(v)}</t></is></c>`;
+      }
+      o += '</row>';
+    }
+    o += '</sheetData>';
+    if (this.protect) o += '<sheetProtection sheet="1" objects="1" scenarios="1" formatCells="0" formatColumns="0" formatRows="0" selectLockedCells="0" selectUnlockedCells="0"/>';
+    if (this.merges.length) o += `<mergeCells count="${this.merges.length}">` + this.merges.map(m => `<mergeCell ref="${m}"/>`).join('') + '</mergeCells>';
+    if (this.validations.length) o += `<dataValidations count="${this.validations.length}">` + this.validations.map(v => `<dataValidation type="custom" allowBlank="1" showErrorMessage="1" errorTitle="分數不正確" error="${xesc(v.msg)}" sqref="${v.sqref}"><formula1>${xesc(v.f)}</formula1></dataValidation>`).join('') + '</dataValidations>';
+    o += `<printOptions horizontalCentered="1"/><pageMargins left="0.3" right="0.3" top="0.4" bottom="0.4" header="0.2" footer="0.2"/><pageSetup paperSize="9" orientation="${this.page.orient}" fitToWidth="1" fitToHeight="${this.page.fitH}"/></worksheet>`;
+    return o;
+  }
+}
+const STYLES_XML = (() => {
+  const F = 'Microsoft JhengHei';
+  const font = (x='') => `<font>${x}<sz val="11"/><name val="${F}"/><family val="2"/></font>`;
+  const fill = rgb => `<fill><patternFill patternType="solid"><fgColor rgb="${rgb}"/><bgColor indexed="64"/></patternFill></fill>`;
+  const side = n => `<${n} style="thin"><color rgb="FF9AA7A4"/></${n}>`;
+  const xf = (numFmt, font, fill, border, align='', unlock=false) => `<xf numFmtId="${numFmt}" fontId="${font}" fillId="${fill}" borderId="${border}" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"${align ? ' applyAlignment="1"' : ''}${unlock ? ' applyProtection="1"' : ''}>${align}${unlock ? '<protection locked="0"/>' : ''}</xf>`;
+  const C = '<alignment horizontal="center" vertical="center" wrapText="1"/>', L = '<alignment horizontal="left" vertical="center"/>', W = '<alignment horizontal="left" vertical="top" wrapText="1"/>';
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    '<numFmts count="2"><numFmt numFmtId="164" formatCode="0.0"/><numFmt numFmtId="165" formatCode="0.00"/></numFmts>' +
+    `<fonts count="5">${font()}${font('<b/>')}<font><b/><sz val="14"/><name val="${F}"/><family val="2"/></font><font><i/><sz val="9"/><color rgb="FF5F6B6E"/><name val="${F}"/><family val="2"/></font><font><b/><sz val="11"/><color rgb="FFB42318"/><name val="${F}"/><family val="2"/></font></fonts>` +
+    `<fills count="5"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>${fill('FFDDEBE7')}${fill('FFFFF2CC')}${fill('FFF2F4F4')}</fills>` +
+    `<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border>${side('left')}${side('right')}${side('top')}${side('bottom')}<diagonal/></border></borders>` +
+    '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+    '<cellXfs count="19">' +
+      xf(0,0,0,0) +               // 0 default
+      xf(0,2,0,0) +               // 1 title
+      xf(0,1,0,0) +               // 2 subtitle
+      xf(0,1,2,1,C) +             // 3 header
+      xf(0,0,0,1,L) +             // 4 body text
+      xf(0,0,0,1,C) +             // 5 body number
+      xf(1,1,3,1,C) +             // 6 total 0dp
+      xf(164,1,3,1,C) +           // 7 total 1dp
+      xf(2,1,3,1,C) +             // 8 total 2dp
+      xf(0,0,4,1,C) +             // 9 meta number
+      xf(0,1,4,1,L) +             // 10 meta label
+      xf(164,0,4,1,C) +           // 11 average
+      xf(0,3,4,1,W) +             // 12 note
+      xf(164,0,0,1,C) +           // 13 category score
+      xf(0,0,0,1) +               // 14 plain bordered
+      xf(0,4,3,1,C) +             // 15 reserved
+      xf(0,0,0,1,L,true) +        // 16 input text (unlocked)
+      xf(0,0,0,1,C,true) +        // 17 input number (unlocked)
+      xf(0,0,0,1,'',true) +       // 18 input plain (unlocked)
+    '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+})();
+function buildXlsx(sheets){
+  const files = [];
+  const ct = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+    sheets.map((s,i) => `<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('') + '</Types>';
+  files.push({name:'[Content_Types].xml', data: ct});
+  files.push({name:'_rels/.rels', data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'});
+  const names = sheets.map(s => s.name);
+  let defs = '';
+  sheets.forEach((s, i) => { if (s.page.area) defs += `<definedName name="_xlnm.Print_Area" localSheetId="${i}">${qSheet(s.name)}!${s.page.area}</definedName>`; if (s.printRows) defs += `<definedName name="_xlnm.Print_Titles" localSheetId="${i}">${qSheet(s.name)}!$${s.printRows[0]}:$${s.printRows[1]}</definedName>`; });
+  files.push({name:'xl/workbook.xml', data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView xWindow="0" yWindow="0" windowWidth="28800" windowHeight="16000" activeTab="0"/></bookViews><sheets>' +
+    names.map((n,i) => `<sheet name="${xesc(n)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join('') + '</sheets>' + (defs ? `<definedNames>${defs}</definedNames>` : '') + '<calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>'});
+  files.push({name:'xl/_rels/workbook.xml.rels', data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    sheets.map((s,i) => `<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join('') +
+    `<Relationship Id="rId${sheets.length+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`});
+  files.push({name:'xl/styles.xml', data: STYLES_XML});
+  sheets.forEach((s,i) => files.push({name:`xl/worksheets/sheet${i+1}.xml`, data: s.xml()}));
+  return zipStore(files);
+}
+function qSheet(n){ return `'${String(n).replace(/'/g, "''")}'`; }
+function safeSheetName(n, used){
+  let s = String(n).replace(/[\[\]:*?\/\\]/g, ' ').trim().slice(0, 31) || '工作表';
+  let k = 2, base = s; while (used.has(s.toLowerCase())){ s = (base.slice(0, 28) + ' ' + k++); }
+  used.add(s.toLowerCase()); return s;
+}
+
+/* ============ export marksheet ============ */
+function buildClassSheet(sh, cls, opts, xs){
+  if (opts.blank) cls = {name: cls.name, scores: {}, students: cls.students.length ? cls.students : Array.from({length: opts.rows || 35}, (_, k) => ({id: 'ph' + k, no: k + 1, zh: '', en: '', sex: '', ph: true}))};
+  const T = num(sh.calc.total), d = +sh.calc.decimals, items = orderedItems(sh), mode = sh.calc.mode;
+  const hasEn = cls.students.some(s => s.en || s.ph), hasSex = cls.students.some(s => s.sex || s.ph);
+  let c = 1; const col = {};
+  col.no = c++; col.zh = c++; if (hasEn) col.en = c++; if (hasSex) col.sex = c++;
+  const nameCols = c - 1;
+  const itemCol = {}; items.forEach(it => itemCol[it.id] = c++);
+  const catCol = {}; const catsUsed = sh.categories.filter(cat => items.some(i => !i.bonus && i.catId === cat.id));
+  if (mode === 'category') catsUsed.forEach(cat => catCol[cat.id] = c++);
+  col.total = c++; if (opts.sign) col.sign = c++;
+  const lastCol = c - 1;
+  const hasContent = items.some(i => (i.content || i.date));
+  const R = {cat:5, name:6};
+  let r = 7; if (hasContent) R.content = r++; R.full = r++; R.w = r++; R.first = r;
+  const S1 = SUBJ[sh.subject];
+  xs.set(1, 1, `${S.settings.school || '學校名稱'}（${sh.year}）`, 1);
+  xs.set(2, 1, `${S1.full} ${sh.term} 分數`, 2);
+  xs.set(3, 1, `班別：${cls.name}　　任教老師：${opts.blank ? '＿＿＿＿＿＿' : (sh.teacher || '')}　　${FORM_ZH[sh.form] || sh.form}`, 2);
+  xs.heights[1] = 24;
+  // header labels
+  xs.set(R.cat, col.no, '班號', 3); xs.merge(R.cat, col.no, R.name, col.no, 3);
+  xs.set(R.cat, col.zh, '中文姓名', 3); xs.merge(R.cat, col.zh, R.name, col.zh, 3);
+  if (col.en){ xs.set(R.cat, col.en, '英文姓名', 3); xs.merge(R.cat, col.en, R.name, col.en, 3); }
+  if (col.sex){ xs.set(R.cat, col.sex, '性別', 3); xs.merge(R.cat, col.sex, R.name, col.sex, 3); }
+  // category bands over items
+  let i = 0;
+  while (i < items.length){
+    const cid = items[i].catId; let j = i; while (j + 1 < items.length && items[j+1].catId === cid) j++;
+    const cat = sh.categories.find(x => x.id === cid);
+    xs.set(R.cat, itemCol[items[i].id], cat ? cat.name : '', 3); xs.merge(R.cat, itemCol[items[i].id], R.cat, itemCol[items[j].id], 3);
+    i = j + 1;
+  }
+  items.forEach(it => xs.set(R.name, itemCol[it.id], it.name + (it.bonus ? '（加分）' : ''), 3));
+  if (mode === 'category' && catsUsed.length){
+    const c1 = catCol[catsUsed[0].id], c2 = catCol[catsUsed[catsUsed.length-1].id];
+    xs.set(R.cat, c1, '類別得分', 3); xs.merge(R.cat, c1, R.cat, c2, 3);
+    catsUsed.forEach(cat => xs.set(R.name, catCol[cat.id], `${cat.name}\n(${fmtN(num(cat.weight))}%)`, 3));
+  }
+  xs.set(R.cat, col.total, `${S1.name} 總分`, 3); xs.merge(R.cat, col.total, R.name, col.total, 3);
+  if (col.sign){ xs.set(R.cat, col.sign, '學生簽署', 3); xs.merge(R.cat, col.sign, R.name, col.sign, 3); }
+  xs.heights[R.name] = 36;
+  // content row
+  if (R.content){
+    xs.set(R.content, 1, '內容', 10); xs.merge(R.content, 1, R.content, nameCols, 10);
+    items.forEach(it => xs.set(R.content, itemCol[it.id], [it.content, it.date].filter(Boolean).join('｜'), 12));
+    for (let k = nameCols + 1; k <= lastCol; k++) if (!xs.rows.get(R.content)?.has(k)) xs.set(R.content, k, null, 12);
+    xs.heights[R.content] = 42;
+  }
+  // full marks row
+  xs.set(R.full, 1, '滿分', 10); xs.merge(R.full, 1, R.full, nameCols, 10);
+  items.forEach(it => xs.set(R.full, itemCol[it.id], num(it.full), 9));
+  catsUsed.forEach(cat => catCol[cat.id] && xs.set(R.full, catCol[cat.id], null, 9));
+  xs.set(R.full, col.total, T, 9); if (col.sign) xs.set(R.full, col.sign, null, 9);
+  // weights row
+  xs.set(R.w, 1, mode === 'item' ? '折算分（加分項：最多加）' : '比重 %（加分項：最多加）', 10); xs.merge(R.w, 1, R.w, nameCols, 10);
+  items.forEach(it => xs.set(R.w, itemCol[it.id], (mode === 'item' || it.bonus) ? num(it.weight) : null, 9));
+  catsUsed.forEach(cat => catCol[cat.id] && xs.set(R.w, catCol[cat.id], num(cat.weight), 9));
+  xs.set(R.w, col.total, sh.calc.cap ? `上限 ${T}` : '', 9); if (col.sign) xs.set(R.w, col.sign, null, 9);
+  // students — formulas work out 缺 / 免 / blanks inside Excel, so later edits there stay correct
+  const totalStyle = d === 0 ? 6 : d === 2 ? 8 : 7;
+  const totalsRef = []; totalsRef.cls = cls; totalsRef.enCol = col.en || null;
+  const firstItemCol = items.length ? itemCol[items[0].id] : null, lastItemCol = items.length ? itemCol[items[items.length - 1].id] : null;
+  const skip = sh.calc.blank !== 'zero';
+  cls.students.forEach((st, k) => {
+    const row = R.first + k; const sc = cls.scores[st.id] || {};
+    xs.set(row, col.no, st.no === '' || st.no === undefined ? null : (Number.isFinite(+st.no) ? +st.no : st.no), 17);
+    xs.set(row, col.zh, st.zh || '', 16); if (col.en) xs.set(row, col.en, st.en || '', 16); if (col.sex) xs.set(row, col.sex, st.sex || '', 17);
+    items.forEach(it => { const v = sc[it.id]; xs.set(row, itemCol[it.id], v === undefined || v === null || v === '' ? null : v, 17); });
+    const res = computeStudent(sh, sc);
+    const X = it => `${colName(itemCol[it.id])}${row}`;
+    const fullRef = it => `${colName(itemCol[it.id])}$${R.full}`, wRef = it => `${colName(itemCol[it.id])}$${R.w}`;
+    const cond = it => skip ? `AND(${X(it)}<>"免",${X(it)}<>"")` : `${X(it)}<>"免"`;
+    const rng = `${colName(firstItemCol)}${row}:${colName(lastItemCol)}${row}`;
+    const bonus = items.filter(it => it.bonus && num(it.full) > 0).map(it => `N(${X(it)})/${fullRef(it)}*${wRef(it)}`);
+    const nb = items.filter(it => !it.bonus && num(it.full) > 0);
+    let numE = null, denE = null;
+    if (mode === 'item'){
+      if (nb.length){ numE = nb.map(it => `N(${X(it)})/${fullRef(it)}*${wRef(it)}`).join('+'); denE = nb.map(it => `IF(${cond(it)},${wRef(it)},0)`).join('+'); }
+    } else {
+      const cc = catsUsed.map(cat => {
+        const its = nb.filter(it => it.catId === cat.id); const c0 = catCol[cat.id]; const wr = `${colName(c0)}$${R.w}`;
+        const f = sh.calc.catMethod === 'avg'
+          ? `IF(COUNTA(${rng})=0,"",IF((${its.map(it => `IF(${cond(it)},1,0)`).join('+')})=0,"免",(${its.map(it => `IF(${cond(it)},N(${X(it)})/${fullRef(it)},0)`).join('+')})/(${its.map(it => `IF(${cond(it)},1,0)`).join('+')})*${wr}))`
+          : `IF(COUNTA(${rng})=0,"",IF((${its.map(it => `IF(${cond(it)},${fullRef(it)},0)`).join('+')})=0,"免",(${its.map(it => `N(${X(it)})`).join('+')})/(${its.map(it => `IF(${cond(it)},${fullRef(it)},0)`).join('+')})*${wr}))`;
+        const v = res.empty ? '' : (res.cats[cat.id] === null || res.cats[cat.id] === undefined ? '免' : res.cats[cat.id]);
+        xs.set(row, c0, v, 13, f);
+        return `${colName(c0)}${row}`;
+      });
+      if (cc.length){ numE = cc.map(c => `N(${c})`).join('+'); denE = cc.map(c => `IF(ISNUMBER(${c}),${c.replace(/\d+$/, '')}$${R.w},0)`).join('+'); }
+    }
+    if (numE === null) xs.set(row, col.total, '', totalStyle);
+    else {
+      let expr = `(${numE})/(${denE})*${T}` + (bonus.length ? '+' + bonus.join('+') : '');
+      if (sh.calc.cap) expr = `MIN(${T},${expr})`;
+      const f = `IF(COUNTA(${rng})=0,"",IF((${denE})=0,"",ROUND(${expr},${d})))`;
+      xs.set(row, col.total, res.total === null ? '' : res.total, totalStyle, f);
+    }
+    totalsRef.push({st, ref: `${colName(col.total)}${row}`, row, value: res.total});
+    if (col.sign) xs.set(row, col.sign, null, 18);
+    xs.heights[row] = 22;
+  });
+  // input check: number between 0 and full, or 缺 / 免
+  const lastStuRow = R.first + cls.students.length - 1;
+  if (cls.students.length) items.forEach(it => { const cn = colName(itemCol[it.id]); const a1 = `${cn}${R.first}`;
+    xs.validations.push({sqref: `${a1}:${cn}${lastStuRow}`, f: `OR(AND(ISNUMBER(${a1}),${a1}>=0,${a1}<=${cn}$${R.full}),${a1}="缺",${a1}="免")`, msg: `請輸入 0 至滿分之間的數字，或「缺」（缺交，當 0 分）、「免」（豁免，不計入）。`}); });
+  xs.protect = !!opts.protect;
+  // average row
+  const last = R.first + cls.students.length - 1;
+  const avgRow = last + 2;
+  if (cls.students.length){
+    xs.set(avgRow, 1, '平均', 10); xs.merge(avgRow, 1, avgRow, nameCols, 10);
+    const avgOf = vals => { const v = vals.filter(x => typeof x === 'number' && Number.isFinite(x)); return v.length ? v.reduce((a,b) => a+b, 0) / v.length : ''; };
+    items.forEach(it => { const cn = colName(itemCol[it.id]); xs.set(avgRow, itemCol[it.id], avgOf(cls.students.map(st => (cls.scores[st.id]||{})[it.id])), 11, `IFERROR(AVERAGE(${cn}${R.first}:${cn}${last}),"")`); });
+    catsUsed.forEach(cat => { if (!catCol[cat.id]) return; const cn = colName(catCol[cat.id]); xs.set(avgRow, catCol[cat.id], avgOf(cls.students.map(st => computeStudent(sh, cls.scores[st.id]).cats[cat.id])), 11, `IFERROR(AVERAGE(${cn}${R.first}:${cn}${last}),"")`); });
+    const cn = colName(col.total);
+    xs.set(avgRow, col.total, avgOf(totalsRef.map(t => t.value)), 11, `IFERROR(AVERAGE(${cn}${R.first}:${cn}${last}),"")`);
+  }
+  // widths
+  xs.widths[col.no] = 5; xs.widths[col.zh] = 10; if (col.en) xs.widths[col.en] = 20; if (col.sex) xs.widths[col.sex] = 5;
+  items.forEach(it => xs.widths[itemCol[it.id]] = Math.max(7, Math.min(12, it.name.length * 1.6 + 2)));
+  catsUsed.forEach(cat => { if (catCol[cat.id]) xs.widths[catCol[cat.id]] = 9; });
+  xs.widths[col.total] = 9; if (col.sign) xs.widths[col.sign] = 18;
+  xs.merge(1, 1, 1, Math.min(lastCol, 8));
+  xs.freeze = {x: nameCols, y: R.w};
+  // A4, whole class on one page incl. signature column: pick the orientation that needs the least shrinking
+  const lastRow = cls.students.length ? avgRow : R.w;
+  let wPt = 0; for (let k = 1; k <= lastCol; k++) wPt += (xs.widths[k] || 8.43) * 5.6 + 4;
+  let hPt = 0; for (let k = 1; k <= lastRow; k++) hPt += xs.heights[k] || 18;
+  const fit = (pw, ph) => Math.min(1, pw / wPt, ph / hPt);
+  const portrait = fit(552, 770), landscape = fit(799, 523);
+  const orient = portrait >= landscape ? 'portrait' : 'landscape';
+  // spare page height (when width is the limit) goes into taller student rows → more room to sign
+  const [pw, ph] = orient === 'portrait' ? [552, 770] : [799, 523];
+  const sW = Math.min(1, pw / wPt), spare = ph / sW - hPt - 4;
+  if (spare > 0 && cls.students.length){
+    const add = Math.min(20, spare / cls.students.length - 0.5);
+    cls.students.forEach((st, k) => xs.heights[R.first + k] = Math.round((22 + add) * 10) / 10);
+  }
+  xs.page = {orient, fitH: 1, area: `$A$1:$${colName(lastCol)}$${lastRow}`};
+  return totalsRef;
+}
+function exportMarksheet(sh, classIds, opts){
+  const used = new Set(); const sheets = []; const summary = [];
+  for (const cls of sh.classes.filter(c => classIds.includes(c.id))){
+    const xs = new XSheet(safeSheetName(cls.name, used));
+    const refs = buildClassSheet(sh, cls, opts, xs);
+    sheets.push(xs); summary.push({cls, xs, refs});
+  }
+  if (opts.summary && summary.length){
+    const xs = new XSheet(safeSheetName('總分表', used));
+    xs.set(1, 1, `${S.settings.school || ''} ${sh.year} ${SUBJ[sh.subject].full} ${sh.term} 總分表`.trim(), 1);
+    ['班別','班號','中文姓名','英文姓名',`總分（${num(sh.calc.total)}）`].forEach((h, k) => xs.set(3, k+1, h, 3));
+    let r = 4;
+    for (const {cls, xs: cs, refs} of summary){
+      for (const ref of refs){
+        const st = ref.st; const q = qSheet(cs.name); const pick = (cn, v) => xs.set(r, cn.k, v, cn.s, `IF(${q}!${colName(cn.c)}${ref.row}="","",${q}!${colName(cn.c)}${ref.row})`);
+        xs.set(r, 1, refs.cls.name, 4);
+        pick({k:2, c:1, s:5}, Number.isFinite(+st.no) && st.no !== '' ? +st.no : (st.no || ''));
+        pick({k:3, c:2, s:4}, st.zh || '');
+        if (refs.enCol) pick({k:4, c:refs.enCol, s:4}, st.en || ''); else xs.set(r, 4, st.en || '', 4);
+        const d = +sh.calc.decimals;
+        xs.set(r, 5, ref.value === null ? '' : ref.value, d === 0 ? 6 : d === 2 ? 8 : 7, `IF(${q}!${ref.ref}="","",${q}!${ref.ref})`);
+        r++;
+      }
+    }
+    xs.widths = {1:8, 2:6, 3:12, 4:24, 5:12}; xs.freeze = {x:0, y:3}; xs.protect = !!opts.protect;
+    sheets.push(xs);
+  }
+  // items sheet
+  const xi = new XSheet(safeSheetName('評核項目', used));
+  xi.set(1, 1, `${SUBJ[sh.subject].full} ${FORM_ZH[sh.form] || sh.form} ${sh.year} ${sh.term} 評核項目`, 1);
+  const heads = ['類別','項目','內容','日期','滿分', sh.calc.mode === 'item' ? '折算分' : '類別比重 %', '加分項'];
+  heads.forEach((h, k) => xi.set(3, k+1, h, 3));
+  let r = 4;
+  for (const it of orderedItems(sh)){
+    const cat = sh.categories.find(c => c.id === it.catId);
+    xi.set(r, 1, cat ? cat.name : '', 4); xi.set(r, 2, it.name, 4); xi.set(r, 3, it.content || '', 4); xi.set(r, 4, it.date || '', 4); xi.set(r, 5, num(it.full), 5);
+    xi.set(r, 6, it.bonus ? num(it.weight) : (sh.calc.mode === 'item' ? num(it.weight) : (cat ? num(cat.weight) : '')), 5); xi.set(r, 7, it.bonus ? '是（最多加 ' + fmtN(num(it.weight)) + ' 分）' : '', 4);
+    r++;
+  }
+  r++;
+  xi.set(r++, 1, '計分方法：', 2);
+  for (const line of formulaPlain(sh)) xi.set(r++, 1, line, 0);
+  xi.widths = {1:12, 2:22, 3:40, 4:12, 5:8, 6:12, 7:18}; xi.protect = !!opts.protect;
+  sheets.push(xi);
+  return buildXlsx(sheets);
+}
+
+/* ============ zip reader + xlsx reader ============ */
+async function unzip(buf){
+  const u8 = new Uint8Array(buf), dv = new DataView(buf); let e = -1;
+  for (let i = u8.length - 22; i >= Math.max(0, u8.length - 65557); i--) if (dv.getUint32(i, true) === 0x06054b50){ e = i; break; }
+  if (e < 0) throw new Error('不是有效的 .xlsx 檔');
+  const count = dv.getUint16(e + 10, true), cdOff = dv.getUint32(e + 16, true);
+  const entries = {}; let p = cdOff; const dec = new TextDecoder();
+  for (let i = 0; i < count; i++){
+    const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true), nl = dv.getUint16(p + 28, true), el = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), lo = dv.getUint32(p + 42, true);
+    entries[dec.decode(u8.subarray(p + 46, p + 46 + nl))] = {method, csize, lo};
+    p += 46 + nl + el + cl;
+  }
+  async function read(name){
+    const en = entries[name]; if (!en) return null;
+    const nl = dv.getUint16(en.lo + 26, true), el = dv.getUint16(en.lo + 28, true), start = en.lo + 30 + nl + el;
+    const data = u8.slice(start, start + en.csize);
+    if (en.method === 0) return data;
+    if (en.method === 8){ const ds = new DecompressionStream('deflate-raw'); return new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(ds)).arrayBuffer()); }
+    throw new Error('不支援的壓縮方式');
+  }
+  return {names: Object.keys(entries), read, text: async n => { const d = await read(n); return d ? dec.decode(d) : null; }};
+}
+const NS_R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+const byTag = (el, t) => [...el.getElementsByTagNameNS('*', t)];
+function colIdx(letters){ let n = 0; for (const ch of letters) n = n * 26 + (ch.charCodeAt(0) - 64); return n - 1; }
+async function readXlsx(buf){
+  const z = await unzip(buf); const P = new DOMParser();
+  const wbx = P.parseFromString(await z.text('xl/workbook.xml'), 'application/xml');
+  const relx = P.parseFromString(await z.text('xl/_rels/workbook.xml.rels') || '<r/>', 'application/xml');
+  const rel = {}; byTag(relx, 'Relationship').forEach(r => rel[r.getAttribute('Id')] = r.getAttribute('Target'));
+  let ss = [];
+  const ssText = await z.text('xl/sharedStrings.xml');
+  if (ssText){
+    const sx = P.parseFromString(ssText, 'application/xml');
+    ss = byTag(sx, 'si').map(si => byTag(si, 't').filter(t => t.parentNode.localName !== 'rPh').map(t => t.textContent).join(''));
+  }
+  const out = [];
+  for (const sEl of byTag(wbx, 'sheet')){
+    const name = sEl.getAttribute('name'); const rid = sEl.getAttributeNS(NS_R, 'id') || sEl.getAttribute('r:id');
+    let target = rel[rid]; if (!target) continue;
+    target = target.startsWith('/') ? target.slice(1) : 'xl/' + target.replace(/^\.\//, '');
+    const text = await z.text(target); if (!text) continue;
+    const x = P.parseFromString(text, 'application/xml'); const grid = [];
+    for (const c of byTag(x, 'c')){
+      const ref = c.getAttribute('r') || ''; const m = /^([A-Z]+)(\d+)$/.exec(ref); if (!m) continue;
+      const r = +m[2] - 1, ci = colIdx(m[1]); if (r > 500 || ci > 40) continue;
+      const t = c.getAttribute('t'); const vEl = byTag(c, 'v')[0]; let v = vEl ? vEl.textContent : null;
+      if (t === 's') v = ss[+v] ?? ''; else if (t === 'inlineStr') v = byTag(c, 't').map(e => e.textContent).join('');
+      else if (t === 'str' || t === 'e') v = v ?? ''; else if (t === 'b') v = v === '1'; else if (v !== null && v !== '') v = +v;
+      if (v === null || v === '') continue;
+      (grid[r] ||= [])[ci] = v;
+    }
+    out.push({name, grid});
+  }
+  return out;
+}
+function parseDelimited(text){
+  const lines = text.replace(/\r/g, '').split('\n').filter(l => l.trim() !== '');
+  const tab = lines.some(l => l.includes('\t'));
+  return lines.map(l => (tab ? l.split('\t') : splitCsv(l)).map(v => { v = v.trim(); return /^-?\d+(\.\d+)?$/.test(v) ? +v : v; }));
+}
+function splitCsv(line){ const out = []; let cur = '', q = false; for (let i = 0; i < line.length; i++){ const ch = line[i]; if (q){ if (ch === '"' && line[i+1] === '"'){ cur += '"'; i++; } else if (ch === '"') q = false; else cur += ch; } else if (ch === '"') q = true; else if (ch === ',') { out.push(cur); cur = ''; } else cur += ch; } out.push(cur); return out; }
+
+/* roster detection: finds the 班號 column by its 1,2,3… run, then classifies the next columns */
+const CJK = /[㐀-鿿豈-﫿]/;
+const SEXV = /^(M|F|男|女|m|f)$/;
+function detectRoster(grid){
+  const rows = grid.length; let width = 0; for (const r of grid) if (r) width = Math.max(width, r.length);
+  const asInt = v => { if (typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 99) return v; if (typeof v === 'string' && /^\d{1,2}$/.test(v.trim())) return +v.trim(); return null; };
+  let best = null;
+  for (let c = 0; c < Math.min(8, width); c++){
+    let run = [], prev = 0, miss = 0;
+    const finish = () => { if (run.length && (!best || run.length > best.rows.length)) best = {col: c, rows: run}; run = []; prev = 0; miss = 0; };
+    for (let r = 0; r < rows; r++){
+      const v = asInt(grid[r]?.[c]);
+      if (v !== null && v > prev && v - prev <= 6 && (run.length || v <= 3)){ run.push(r); prev = v; miss = 0; }
+      else if (v !== null && v <= 3){ finish(); run.push(r); prev = v; }
+      else if (run.length){ if (++miss > 2) finish(); }
+    }
+    finish();
+  }
+  if (!best || best.rows.length < 1) return null;
+  const nc = best.col, dataRows = best.rows;
+  let zh = -1, en = -1, sex = -1, zhS = 0, enS = 0;
+  for (let c = nc + 1; c <= Math.min(nc + 5, width - 1); c++){
+    let cj = 0, la = 0, sx = 0, filled = 0, other = 0;
+    for (const r of dataRows){
+      const v = grid[r]?.[c]; if (v === undefined || v === null || v === '') continue; filled++;
+      const s = String(v).trim();
+      if (SEXV.test(s)) sx++; else if (CJK.test(s)) cj++; else if (/^[A-Za-z][A-Za-z ,.'()-]+$/.test(s) && s.length > 2) la++; else other++;
+    }
+    const n = dataRows.length;
+    if (cj / n >= .5 && cj > zhS && zh < 0){ zh = c; zhS = cj; continue; }
+    if (la / n >= .5 && la > enS && en < 0){ en = c; enS = la; continue; }
+    if (sx > 0 && sex < 0 && other === 0 && cj === 0 && la === 0){ sex = c; continue; }
+  }
+  if (zh < 0 && en < 0) return null;
+  const students = dataRows.map(r => {
+    const g = grid[r] || []; const sv = sex >= 0 ? String(g[sex] ?? '').trim() : '';
+    return {no: asInt(g[nc]) ?? '', zh: zh >= 0 ? String(g[zh] ?? '').trim() : '', en: en >= 0 ? String(g[en] ?? '').trim() : '', sex: /^(F|f|女)$/.test(sv) ? 'F' : /^(M|m|男)$/.test(sv) ? 'M' : ''};
+  }).filter(s => s.zh || s.en);
+  return students.length ? {students, cols:{no:nc, zh, en, sex}} : null;
+}
+function rosterFromPaste(text){
+  const grid = parseDelimited(text);
+  const det = detectRoster(grid); if (det) return det.students;
+  // fallback: one name per line
+  return grid.map((row, k) => { const s = String(row.find(v => v !== '' && v !== undefined) ?? '').trim(); return {no: k + 1, zh: CJK.test(s) ? s : '', en: CJK.test(s) ? '' : s, sex:''}; }).filter(s => s.zh || s.en);
+}
+function guessClassName(sheetName){ const m = /([1-6])\s*([A-Za-z])/.exec(sheetName); return m ? m[1] + m[2].toUpperCase() : sheetName.trim(); }
+function applyRoster(sh, name, students){
+  let cls = sh.classes.find(c => c.name.trim().toLowerCase() === name.trim().toLowerCase());
+  if (!cls){ cls = {id: uid('k'), name: name.trim(), students: [], scores: {}}; sh.classes.push(cls); }
+  const old = cls.students; const next = [];
+  for (const s of students){
+    const match = old.find(o => String(o.no) === String(s.no) && (o.zh === s.zh || o.en === s.en || (!o.zh && !o.en))) || old.find(o => s.zh && o.zh === s.zh);
+    next.push({id: match ? match.id : uid('s'), no: s.no, zh: s.zh, en: s.en, sex: s.sex});
+  }
+  const keep = new Set(next.map(s => s.id));
+  for (const k of Object.keys(cls.scores)) if (!keep.has(k)) delete cls.scores[k];
+  cls.students = next;
+  return cls;
+}
+
+/* ============ formula text ============ */
+function formulaParts(sh){
+  const items = orderedItems(sh), T = num(sh.calc.total), d = +sh.calc.decimals;
+  const term = it => num(it.weight) === num(it.full) || sh.calc.mode !== 'item' && !it.bonus ? esc(it.name) : `${esc(it.name)} <span class="op">÷</span> ${fmtN(num(it.full))} <span class="op">×</span> ${fmtN(num(it.weight))}`;
+  const bonus = items.filter(i => i.bonus);
+  const tail = `${sh.calc.cap ? `，最多 ${T} 分` : ''}，取 ${d} 位小數`;
+  return {items, T, d, term, bonus, tail};
+}
+function formulaHTML(sh){
+  const {items, T, term, bonus, tail} = formulaParts(sh);
+  const bonusHTML = bonus.length ? ' <span class="op">＋</span> ' + bonus.map(it => `<span class="term bonus">${esc(it.name)} <span class="op">÷</span> ${fmtN(num(it.full))} <span class="op">×</span> ${fmtN(num(it.weight))}</span>`).join(' <span class="op">＋</span> ') : '';
+  if (sh.calc.mode === 'item'){
+    const nb = items.filter(i => !i.bonus); if (!nb.length) return '<span class="muted">先在「② 評核項目」加入項目。</span>';
+    const W = sumWeights(sh);
+    const sumPart = nb.map(it => `<span class="term">${term(it)}</span>`).join(' <span class="op">＋</span> ');
+    const scale = Math.abs(W - T) < 1e-9 ? '' : ` <span class="op">÷</span> ${fmtN(W)} <span class="op">×</span> ${T}`;
+    return `<b>學期總分</b> <span class="op">＝</span> （${sumPart}）${scale}${bonusHTML}<br><span class="muted">${tail.slice(1)}</span>`;
+  }
+  const lines = [];
+  const used = sh.categories.filter(cat => items.some(i => !i.bonus && i.catId === cat.id));
+  if (!used.length) return '<span class="muted">先在「② 評核項目」加入項目。</span>';
+  for (const cat of used){
+    const its = items.filter(i => !i.bonus && i.catId === cat.id);
+    const fullSum = its.reduce((a,i) => a + num(i.full), 0);
+    const inner = sh.calc.catMethod === 'avg'
+      ? `平均（${its.map(i => `<span class="term">${esc(i.name)} <span class="op">÷</span> ${fmtN(num(i.full))}</span>`).join('、')}）`
+      : `（${its.map(i => `<span class="term">${esc(i.name)}</span>`).join(' <span class="op">＋</span> ')}） <span class="op">÷</span> ${fmtN(fullSum)}`;
+    lines.push(`<b>${esc(cat.name)}</b> <span class="op">＝</span> ${inner} <span class="op">×</span> ${fmtN(num(cat.weight))}`);
+  }
+  const W = used.reduce((a,c) => a + num(c.weight), 0);
+  const scale = Math.abs(W - T) < 1e-9 ? '' : ` <span class="op">÷</span> ${fmtN(W)} <span class="op">×</span> ${T}`;
+  lines.push(`<b>學期總分</b> <span class="op">＝</span> （${used.map(c => esc(c.name)).join(' <span class="op">＋</span> ')}）${scale}${bonusHTML}<br><span class="muted">${tail.slice(1)}</span>`);
+  return lines.join('<br>');
+}
+function formulaPlain(sh){
+  const div = document.createElement('div');
+  div.innerHTML = formulaHTML(sh).replace(/<br>/g, '\n');
+  const lines = div.textContent.split('\n').map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  lines.push('缺 = 缺交（當 0 分）；免 = 豁免（該項不計入）；空白 = ' + (sh.calc.blank === 'zero' ? '當 0 分' : '不計入'));
+  return lines;
+}
+
+/* ============ rendering ============ */
+function renderAll(){ renderSide(); renderMain(); }
+function renderSide(){
+  const groups = SUBJ_ORDER.map(k => ({k, list: S.sheets.filter(s => s.subject === k)})).filter(g => g.list.length);
+  $('#side').innerHTML = `
+    <div class="brand"><b>分紙</b><span>ICT ・ 電腦 ・ DT</span></div>
+    <div class="status" id="status" data-s="saved"><i></i><span></span></div>
+    <button class="btn primary" data-act="newSheet">＋ 新增分紙</button>
+    <nav class="sheet-list" aria-label="分紙">
+      ${groups.map(g => `<div class="sheet-group"><h4><i class="dot" style="background:${SUBJ[g.k].color}"></i>${SUBJ[g.k].name}</h4>
+        ${g.list.map(s => `<button class="sheet-btn" data-act="openSheet" data-id="${s.id}" aria-current="${s.id === S.curId}">
+          <b>${esc(sheetTitle(s))} · ${esc(s.term)}</b><small>${esc(s.year)} · ${s.classes.length} 班 · ${s.classes.reduce((a,c) => a + c.students.length, 0)} 人</small></button>`).join('')}
+      </div>`).join('')}
+    </nav>
+    <div class="field" style="margin-top:auto">
+      <label for="schoolName">學校名稱（印在 Excel 分紙頂部）</label>
+      <input class="inp" id="schoolName" data-f="school" value="${esc(S.settings.school)}" placeholder="例如：XX 中學">
+    </div>`;
+  setStatus(dirty.size ? 'pending' : 'saved');
+}
+function renderMain(){
+  const sh = cur(); const m = $('#main');
+  if (!sh){
+    m.innerHTML = `<div class="empty">
+      <h1>建立第一份分紙</h1>
+      <p>選科目（ICT、電腦或 DT），匯入各班學生，訂好這學期的評核項目和滿分，輸入分數後工具會按你定的公式計出學期總分，再匯出成 Excel 分紙。</p>
+      <ol class="steps"><li>學生名單：可直接匯入舊分紙 Excel，每個工作表當一班</li><li>評核項目：堂課、功課、測驗、默書、課堂表現……每項的內容、滿分、折算分</li><li>計分方式：按項目折算，或按類別比重</li><li>輸入分數：像試算表一樣輸入，總分即時更新</li><li>匯出 Excel：每班一頁，總分欄保留公式</li></ol>
+      <div class="row"><button class="btn primary" data-act="newSheet">＋ 新增分紙</button><button class="btn" data-act="demo">開啟示範分紙（虛構學生）</button></div>
+    </div>`;
+    return;
+  }
+  const subj = SUBJ[sh.subject];
+  const nStu = sh.classes.reduce((a,c) => a + c.students.length, 0);
+  const tabs = [['roster','學生名單'],['items','評核項目'],['calc','計分方式'],['scores','輸入分數'],['export','總覽及匯出']].concat(sh.subject === 'dt' ? [] : [['typing','打字換算']]);
+  m.innerHTML = `
+    <header class="head">
+      <div>
+        <span class="subj-tag" style="color:${subj.color}">${subj.name}・${esc(subj.full)}</span>
+        <h1 style="margin-top:6px">${esc(sheetTitle(sh))}　${esc(sh.term)}</h1>
+        <div class="meta"><span>${esc(sh.year)} 學年</span><span>任教老師：${esc(sh.teacher || '—')}</span><span>${sh.classes.length} 班・${nStu} 人</span><span>${sh.items.length} 個評核項目</span></div>
+      </div>
+      <div class="row"><button class="btn sm" data-act="editSheet">修改資料</button><button class="btn sm" data-act="dupSheet">複製成新分紙</button><button class="btn sm danger" data-act="delSheet">刪除</button></div>
+    </header>
+    <div class="tabs" role="tablist">${tabs.map(([k,l],i) => `<button class="tab" role="tab" data-act="tab" data-tab="${k}" aria-selected="${S.tab === k}"><span>${k === 'typing' ? '⌨' : i+1}</span>${l}</button>`).join('')}</div>
+    <div id="tabBody" style="display:flex;flex-direction:column;gap:18px"></div>`;
+  renderTab();
+}
+function renderTab(){
+  const sh = cur(); const b = $('#tabBody'); if (!sh || !b) return;
+  if (S.tab === 'typing' && sh.subject === 'dt') S.tab = 'roster';
+  b.innerHTML = ({roster: rosterTab, items: itemsTab, calc: calcTab, scores: scoresTab, export: exportTab, typing: typingTab}[S.tab] || rosterTab)(sh);
+  if (S.tab === 'roster') bindDrop();
+}
+function classChips(sh, act='pickClass', extra=''){
+  const cls = curClass(sh);
+  return `<div class="chips" role="group" aria-label="班別">${sh.classes.map(c => `<button class="chip" data-act="${act}" data-id="${c.id}" aria-pressed="${cls && c.id === cls.id}">${esc(c.name)}<span class="count">${c.students.length}人</span></button>`).join('')}${extra}</div>`;
+}
+
+/* ---- tab 1 roster ---- */
+function rosterTab(sh){
+  const cls = curClass(sh);
+  const others = S.sheets.filter(s => s.id !== sh.id && s.classes.length);
+  const pv = S.importPreview;
+  return `
+  <section class="card">
+    <div class="card-head"><h3>班別及學生</h3>
+      <div class="row"><input class="inp" id="newClassName" placeholder="新班別，例如 3A" style="width:150px"><button class="btn sm" data-act="addClass">新增班別</button></div></div>
+    ${sh.classes.length ? classChips(sh) : '<p class="hint">還未有班別。用下面的匯入功能，或在右上角新增班別。</p>'}
+    ${cls ? `
+      <div class="row" style="justify-content:space-between">
+        <div class="row"><label class="lbl" for="clsName">班別名稱</label><input class="inp" id="clsName" data-f="className" value="${esc(cls.name)}" style="width:110px"></div>
+        <div class="row"><button class="btn sm" data-act="addStudent">＋ 加一位學生</button><button class="btn sm" data-act="sortStudents">按班號排序</button><button class="btn sm danger" data-act="delClass">刪除此班</button></div>
+      </div>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th class="w-no">班號</th><th>中文姓名</th><th>英文姓名</th><th class="w-no">性別</th><th class="w-act"></th></tr></thead><tbody>
+        ${cls.students.map(st => `<tr data-sid="${st.id}">
+          <td><input class="inp num" data-f="stu" data-k="no" value="${esc(st.no)}" aria-label="班號"></td>
+          <td><input class="inp" data-f="stu" data-k="zh" value="${esc(st.zh)}" aria-label="中文姓名"></td>
+          <td><input class="inp" data-f="stu" data-k="en" value="${esc(st.en)}" aria-label="英文姓名"></td>
+          <td><select class="inp" data-f="stu" data-k="sex" aria-label="性別"><option value=""${!st.sex?' selected':''}>—</option><option value="M"${st.sex==='M'?' selected':''}>M</option><option value="F"${st.sex==='F'?' selected':''}>F</option></select></td>
+          <td class="w-act"><button class="btn icon ghost" data-act="delStudent" data-id="${st.id}" aria-label="刪除學生">✕</button></td></tr>`).join('') || `<tr><td colspan="5" class="muted">這班還沒有學生。</td></tr>`}
+      </tbody></table></div>` : ''}
+  </section>
+  <section class="card">
+    <h3>匯入學生名單</h3>
+    <p class="hint">同一班再次匯入會更新名單；按班號對應的學生，已輸入的分數會保留。</p>
+    ${pv ? `<div class="preview">
+        <div class="row" style="justify-content:space-between"><b>找到 ${pv.length} 班，請確認班別名稱</b><span class="muted" style="font-size:12.5px">${esc(pv.source || '')}</span></div>
+        ${pv.map((p, k) => `<div class="prev-row">
+          <input type="checkbox" data-f="pvInc" data-k="${k}" ${p.include ? 'checked' : ''} aria-label="匯入 ${esc(p.name)}" style="accent-color:var(--accent);width:16px;height:16px">
+          <input class="inp" data-f="pvName" data-k="${k}" value="${esc(p.name)}" aria-label="班別名稱">
+          <span class="pill ${sh.classes.some(c => c.name.toLowerCase() === p.name.toLowerCase()) ? 'warn' : 'ok'}">${p.students.length} 人${sh.classes.some(c => c.name.toLowerCase() === p.name.toLowerCase()) ? '・更新現有班' : '・新班'}</span>
+          <small>${p.students.slice(0, 5).map(s => esc(`${s.no} ${s.zh || s.en}`)).join('、')}${p.students.length > 5 ? '……' : ''}</small></div>`).join('')}
+        <div class="row"><button class="btn primary" data-act="applyImport">匯入所選班別</button><button class="btn" data-act="cancelImport">取消</button></div>
+      </div>` : ''}
+    <div class="grid3">
+      <div class="sub"><h4>從 Excel / CSV 檔</h4>
+        <label class="drop" id="drop"><input type="file" id="rosterFile" accept=".xlsx,.xlsm,.csv,.txt"><span><b>選擇檔案</b> 或拖放到這裏</span><span class="muted" style="font-size:12px">可直接用舊分紙：每個工作表當一班，自動找出班號、姓名、性別</span></label>
+      </div>
+      <div class="sub"><h4>貼上名單</h4>
+        <textarea class="inp" id="pasteBox" placeholder="從 Excel 複製「班號、姓名」等欄位貼上，例如：&#10;1	陳大文	CHAN TAI MAN	M&#10;2	李小晴	LEE SIU CHING	F"></textarea>
+        <div class="row"><input class="inp" id="pasteClass" placeholder="班別" value="${esc(cls ? cls.name : '')}" style="width:100px"><button class="btn sm" data-act="pasteImport">讀取名單</button></div>
+      </div>
+      <div class="sub"><h4>從其他分紙複製</h4>
+        ${others.length ? `<select class="inp" id="copyFrom">${others.map(o => `<option value="${o.id}">${esc(sheetTitle(o))} ${esc(o.term)}（${esc(o.year)}）</option>`).join('')}</select>
+          <p class="hint" style="font-size:12.5px">同一批學生讀電腦又讀 DT 時最方便，只複製名單，不複製分數。</p>
+          <button class="btn sm" data-act="copyRoster">選擇要複製的班別</button>`
+        : '<p class="hint">建立了其他分紙後，可以在這裏直接複製它們的學生名單。</p>'}
+      </div>
+    </div>
+  </section>`;
+}
+function bindDrop(){
+  const d = $('#drop'); if (!d) return;
+  d.addEventListener('dragover', e => { e.preventDefault(); d.classList.add('over'); });
+  d.addEventListener('dragleave', () => d.classList.remove('over'));
+  d.addEventListener('drop', e => { e.preventDefault(); d.classList.remove('over'); const f = e.dataTransfer.files[0]; if (f) handleRosterFile(f); });
+}
+async function handleRosterFile(file){
+  try {
+    let found = [];
+    if (/\.(csv|txt)$/i.test(file.name)){
+      const det = detectRoster(parseDelimited(await file.text()));
+      if (det) found.push({name: guessClassName(file.name.replace(/\.[^.]+$/, '')), students: det.students, include: true});
+    } else if (/\.xls$/i.test(file.name)){
+      toast('舊式 .xls 檔未能讀取，請在 Excel 另存為 .xlsx 再匯入'); return;
+    } else {
+      const sheets = await readXlsx(await file.arrayBuffer());
+      for (const s of sheets){ const det = detectRoster(s.grid); if (det) found.push({name: guessClassName(s.name), students: det.students, include: true}); }
+    }
+    if (!found.length){ toast('找不到學生名單：請確認有「班號」一欄（1、2、3…）及姓名'); return; }
+    S.importPreview = found; S.importPreview.source = file.name; renderTab();
+  } catch (e){ console.error(e); toast('讀取檔案失敗：' + (e.message || e)); }
+}
+
+/* ---- tab 2 items ---- */
+function itemsTab(sh){
+  const items = orderedItems(sh); const modeItem = sh.calc.mode === 'item';
+  const missing = CAT_PRESETS.filter(p => !sh.categories.some(c => c.name === p));
+  const W = sumWeights(sh);
+  return `
+  <section class="card">
+    <div class="card-head"><h3>評核類別</h3><span class="hint">類別次序就是分紙上欄位的次序</span></div>
+    <div class="chips">${sh.categories.map((c, k) => `<span class="chip c${k % 8}" style="cursor:default">
+        <input class="inp" data-f="catName" data-id="${c.id}" value="${esc(c.name)}" aria-label="類別名稱" style="width:${Math.max(4, c.name.length + 2)}em;padding:1px 6px;background:transparent;border-color:transparent">
+        <button class="btn icon ghost" data-act="catUp" data-id="${c.id}" aria-label="向前移" ${k === 0 ? 'disabled' : ''}>←</button>
+        <button class="btn icon ghost" data-act="catDel" data-id="${c.id}" aria-label="刪除類別">✕</button></span>`).join('')}</div>
+    <div class="row"><span class="lbl">加入：</span>${missing.map(p => `<button class="chip add" data-act="catAdd" data-name="${p}">＋ ${p}</button>`).join('')}
+      <input class="inp" id="customCat" placeholder="其他類別" style="width:120px"><button class="btn sm" data-act="catAddCustom">加入</button></div>
+  </section>
+  <section class="card">
+    <div class="card-head"><h3>評核項目</h3>
+      <div class="sumline">${modeItem ? `<span>折算分合計 <b>${fmtN(W)}</b></span><span>→ 縮放至學期總分 <b>${num(sh.calc.total)}</b></span>` : `<span>按類別比重計分，比重在「③ 計分方式」設定</span>`}</div></div>
+    <p class="hint">${modeItem ? '「折算分」是該項目在總分中的份量：滿分 40 的習作若折算 25，即學生得 36/40 會計 22.5。折算分與滿分相同即照計原分。' : '按類別比重時，同一類別內的項目會先合併（按滿分比例），再乘該類別的比重。'}「加分項」不計入滿分，只會加分（例如繪圖 bonus）。</p>
+    ${sh.categories.length ? `<div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>項目名稱</th><th>內容 / 描述</th><th class="w-num">日期</th><th class="w-num">滿分</th><th class="w-num">${modeItem ? '折算分' : '加分上限'}</th><th class="w-no">加分項</th><th class="w-act"></th></tr></thead>
+      <tbody>${sh.categories.map((cat, k) => {
+        const its = items.filter(i => i.catId === cat.id);
+        const sub = its.filter(i => !i.bonus).reduce((a,i) => a + num(i.weight), 0);
+        return `<tr class="cat-band"><td colspan="7" class="c${k % 8}"><div class="row" style="justify-content:space-between"><span>${esc(cat.name)} <span class="muted" style="font-weight:400">・${its.length} 項${modeItem ? `・折算 ${fmtN(sub)}` : `・比重 ${fmtN(num(cat.weight))}%`}</span></span><button class="btn sm" data-act="itemAdd" data-cat="${cat.id}">＋ 在「${esc(cat.name)}」加項目</button></div></td></tr>` +
+          its.map(it => `<tr data-iid="${it.id}">
+            <td><input class="inp" data-f="item" data-k="name" value="${esc(it.name)}" aria-label="項目名稱"></td>
+            <td><input class="inp" data-f="item" data-k="content" value="${esc(it.content)}" placeholder="例如：第一章 習作 1-10 題" aria-label="內容"></td>
+            <td><input class="inp" data-f="item" data-k="date" value="${esc(it.date)}" placeholder="10/9" aria-label="日期"></td>
+            <td><input class="inp num" data-f="item" data-k="full" value="${fmtN(num(it.full))}" inputmode="decimal" aria-label="滿分"></td>
+            <td>${(modeItem || it.bonus) ? `<input class="inp num" data-f="item" data-k="weight" value="${fmtN(num(it.weight))}" inputmode="decimal" aria-label="${it.bonus ? '加分上限' : '折算分'}">` : '<span class="muted">—</span>'}</td>
+            <td style="text-align:center"><input type="checkbox" data-f="item" data-k="bonus" ${it.bonus ? 'checked' : ''} aria-label="加分項" style="accent-color:var(--accent);width:16px;height:16px"></td>
+            <td class="w-act"><select class="inp" data-f="item" data-k="catId" aria-label="移到類別" style="width:auto;padding:3px 4px;font-size:12px">${sh.categories.map(c => `<option value="${c.id}"${c.id === it.catId ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
+              <button class="btn icon ghost" data-act="itemUp" data-id="${it.id}" aria-label="上移">↑</button><button class="btn icon ghost" data-act="itemDel" data-id="${it.id}" aria-label="刪除項目">✕</button></td></tr>`).join('');
+      }).join('')}</tbody></table></div>` : '<p class="hint">請先加入類別。</p>'}
+  </section>`;
+}
+
+/* ---- tab 3 calc ---- */
+function calcTab(sh){
+  const c = sh.calc; const used = sh.categories.filter(cat => sh.items.some(i => !i.bonus && i.catId === cat.id));
+  const wsum = used.reduce((a,x) => a + num(x.weight), 0);
+  const cls = curClass(sh); const st = cls && cls.students.find(s => s.id === S.exStu) || (cls && cls.students[0]);
+  return `
+  <section class="card">
+    <h3>計分方式</h3>
+    <div class="modes">
+      <label class="mode"><input type="radio" name="mode" data-f="calc" data-k="mode" value="item" ${c.mode === 'item' ? 'checked' : ''}><span><b>按項目折算</b><small>每個項目先折算成指定分數，全部加起來，再按比例變成學期總分。舊電腦分紙（默書 × 4.4，÷ 219 × 50）和 DT 分紙（各部份折算後 ÷ 2）都是這種。</small></span></label>
+      <label class="mode"><input type="radio" name="mode" data-f="calc" data-k="mode" value="category" ${c.mode === 'category' ? 'checked' : ''}><span><b>按類別比重</b><small>每個類別佔一個百分比，例如功課 30%、測驗 50%、課堂表現 20%。類別內的項目先合併，項目多少不影響比重。</small></span></label>
+    </div>
+    <div class="form2" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
+      <div class="field"><label for="cTotal">學期總分（滿分）</label><input class="inp num" id="cTotal" data-f="calc" data-k="total" value="${num(c.total)}" inputmode="decimal"></div>
+      <div class="field"><label for="cDec">小數位</label><select class="inp" id="cDec" data-f="calc" data-k="decimals">${[0,1,2].map(n => `<option value="${n}"${+c.decimals === n ? ' selected' : ''}>${n} 位</option>`).join('')}</select></div>
+      <div class="field"><label for="cBlank">空白的分數</label><select class="inp" id="cBlank" data-f="calc" data-k="blank"><option value="zero"${c.blank === 'zero' ? ' selected' : ''}>當 0 分</option><option value="skip"${c.blank === 'skip' ? ' selected' : ''}>不計入（學期中途用）</option></select></div>
+      ${c.mode === 'category' ? `<div class="field"><label for="cMeth">類別內合併方法</label><select class="inp" id="cMeth" data-f="calc" data-k="catMethod"><option value="sum"${c.catMethod === 'sum' ? ' selected' : ''}>合計分數 ÷ 合計滿分</option><option value="avg"${c.catMethod === 'avg' ? ' selected' : ''}>各項百分比平均</option></select></div>` : ''}
+      <div class="field" style="justify-content:flex-end"><label class="check"><input type="checkbox" data-f="calc" data-k="cap" ${c.cap ? 'checked' : ''}> 總分不可超過滿分</label></div>
+    </div>
+    ${c.mode === 'category' ? `<div class="sub"><div class="row" style="justify-content:space-between"><h4>類別比重</h4><span class="pill ${Math.abs(wsum - 100) < 1e-6 ? 'ok' : 'warn'}">合計 ${fmtN(wsum)}%${Math.abs(wsum - 100) < 1e-6 ? '' : '（會按比例換算）'}</span></div>
+      <div class="row">${used.map(cat => `<div class="field" style="width:130px"><label>${esc(cat.name)}</label><div class="row" style="flex-wrap:nowrap;gap:4px"><input class="inp num" data-f="catWeight" data-id="${cat.id}" value="${fmtN(num(cat.weight))}" inputmode="decimal" aria-label="${esc(cat.name)} 比重"><span>%</span></div></div>`).join('')}
+      <button class="btn sm" data-act="autoWeights" style="align-self:flex-end">按項目滿分自動分配</button></div></div>` : ''}
+  </section>
+  <section class="card">
+    <h3>公式</h3>
+    <div class="formula">${formulaHTML(sh)}</div>
+    <p class="hint">輸入分數時：<code class="mono">缺</code> 代表缺交，當 0 分；<code class="mono">免</code> 代表豁免，該項目不計入這位學生的總分（其餘項目按比例補足）。</p>
+  </section>
+  ${st ? `<section class="card">
+    <div class="card-head"><h3>用學生驗算</h3>
+      <div class="row">${classChips(sh, 'exClass')}<select class="inp" data-f="exStu" aria-label="選擇學生" style="width:auto">${cls.students.map(s => `<option value="${s.id}"${s.id === st.id ? ' selected' : ''}>${esc(s.no)} ${esc(stuName(s))}</option>`).join('')}</select></div></div>
+    ${workedExample(sh, cls, st)}
+  </section>` : ''}`;
+}
+function workedExample(sh, cls, st){
+  const sc = cls.scores[st.id] || {}; const items = orderedItems(sh); const res = computeStudent(sh, sc); const c = sh.calc; const T = num(c.total);
+  const rows = items.map(it => {
+    const v = sc[it.id]; const s = itemState(sh, v);
+    let contrib = '—';
+    if (s.inc && num(it.full) > 0){
+      if (it.bonus) contrib = '+' + fmtN(s.n / num(it.full) * num(it.weight)) + '（加分）';
+      else if (c.mode === 'item') contrib = fmtN(s.n / num(it.full) * num(it.weight)) + ' / ' + fmtN(num(it.weight));
+      else contrib = fmtN(s.n / num(it.full) * 100) + '%';
+    } else if (!s.inc) contrib = '不計入';
+    const cat = sh.categories.find(x => x.id === it.catId);
+    return `<tr><td>${esc(cat ? cat.name : '')}</td><td>${esc(it.name)}</td><td class="num">${v === undefined || v === '' ? '<span class="muted">空白</span>' : esc(v)}</td><td class="num">${fmtN(num(it.full))}</td><td class="num">${contrib}</td></tr>`;
+  }).join('');
+  const catRows = c.mode === 'category' ? sh.categories.filter(cat => cat.id in res.cats).map(cat => `<span class="pill">${esc(cat.name)}：${res.cats[cat.id] === null ? '不計入' : fmtN(res.cats[cat.id]) + ' / ' + fmtN(num(cat.weight))}</span>`).join(' ') : '';
+  return `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>類別</th><th>項目</th><th>得分</th><th>滿分</th><th>${c.mode === 'item' ? '折算後' : '百分比'}</th></tr></thead><tbody>${rows}</tbody></table></div>
+    ${catRows ? `<div class="row">${catRows}</div>` : ''}
+    <div class="sumline"><span>${esc(stuName(st))} 的學期總分</span><b style="font-size:20px">${fmt(res.total, +c.decimals)}</b><span>/ ${T}</span></div>`;
+}
+
+/* ---- tab 4 scores ---- */
+function scoresTab(sh){
+  const cls = curClass(sh);
+  if (!sh.classes.length) return `<section class="card"><h3>輸入分數</h3><p class="hint">先在「① 學生名單」加入班別和學生。</p><div><button class="btn" data-act="tab" data-tab="roster">前往學生名單</button></div></section>`;
+  if (!sh.items.length) return `<section class="card"><h3>輸入分數</h3><p class="hint">先在「② 評核項目」加入項目。</p><div><button class="btn" data-act="tab" data-tab="items">前往評核項目</button></div></section>`;
+  const items = orderedItems(sh); const c = sh.calc; const T = num(c.total);
+  const catsUsed = c.mode === 'category' ? sh.categories.filter(cat => items.some(i => !i.bonus && i.catId === cat.id)) : [];
+  // category spans
+  const spans = []; let i = 0;
+  while (i < items.length){ const cid = items[i].catId; let j = i; while (j + 1 < items.length && items[j+1].catId === cid) j++; spans.push({cat: sh.categories.find(x => x.id === cid), n: j - i + 1}); i = j + 1; }
+  const head1 = `<tr><th class="stick1" rowspan="3">班號</th><th class="stick2" rowspan="3" style="text-align:left">姓名</th>
+    ${spans.map(s => `<th colspan="${s.n}" class="c${catIndex(sh, s.cat?.id)}">${esc(s.cat ? s.cat.name : '')}</th>`).join('')}
+    ${catsUsed.length ? `<th colspan="${catsUsed.length}">類別得分</th>` : ''}<th class="tot" rowspan="3">總分<br><span class="num" style="font-weight:400;font-size:11.5px">/ ${T}</span></th></tr>`;
+  const head2 = `<tr>${items.map(it => `<th class="c${catIndex(sh, it.catId)}" title="${esc([it.content, it.date].filter(Boolean).join('｜'))}"><span class="iname">${esc(it.name)}${it.bonus ? ' <span class="pill">加分</span>' : ''}</span></th>`).join('')}
+    ${catsUsed.map(cat => `<th><span class="iname">${esc(cat.name)}</span></th>`).join('')}</tr>`;
+  const head3 = `<tr>${items.map(it => `<th><span class="ifull">/${fmtN(num(it.full))}${c.mode === 'item' && !it.bonus && num(it.weight) !== num(it.full) ? `→${fmtN(num(it.weight))}` : ''}${it.bonus ? `→+${fmtN(num(it.weight))}` : ''}<button class="btn" data-act="colTools" data-id="${it.id}" aria-label="${esc(it.name)} 整欄工具" title="整欄工具">⋯</button></span></th>`).join('')}
+    ${catsUsed.map(cat => `<th><span class="ifull">${fmtN(num(cat.weight))}%</span></th>`).join('')}</tr>`;
+  const body = cls.students.map((st, r) => {
+    const sc = cls.scores[st.id] || {}; const res = computeStudent(sh, sc);
+    return `<tr data-sid="${st.id}"><td class="no stick1">${esc(st.no)}</td><td class="nm stick2">${esc(st.zh || st.en)}${st.zh && st.en ? `<small>${esc(st.en)}</small>` : ''}</td>
+      ${items.map((it, k) => { const v = sc[it.id]; const cls2 = scoreClass(v, it); return `<td><input class="sc${cls2}" data-r="${r}" data-c="${k}" data-iid="${it.id}" value="${v === undefined || v === null ? '' : esc(v)}" inputmode="decimal" autocomplete="off" aria-label="${esc(stuName(st))} ${esc(it.name)}"></td>`; }).join('')}
+      ${catsUsed.map(cat => `<td class="catv" data-cat="${cat.id}">${res.cats[cat.id] === undefined || res.cats[cat.id] === null ? '—' : fmt(res.cats[cat.id], 1)}</td>`).join('')}
+      <td class="tot${res.total !== null && res.total < T/2 ? ' low' : ''}">${fmt(res.total, +c.decimals)}</td></tr>`;
+  }).join('');
+  return `
+  <section class="card">
+    <div class="card-head">${classChips(sh)}
+      <div class="row"><button class="btn sm" data-act="copyTotals">複製總分（可貼到 Excel）</button><button class="btn sm primary" data-act="tab" data-tab="export">匯出 Excel</button></div></div>
+    <div class="legend"><span>輸入後按 <code>Enter</code> 移到下一位學生，方向鍵移動</span><span><code>缺</code> 缺交，當 0 分</span><span><code>免</code> 豁免，不計入</span><span>可以從 Excel 複製一整欄分數，點第一格後貼上</span></div>
+    ${cls.students.length ? `<div class="grid-wrap"><table class="g" id="grid"><thead>${head1}${head2}${head3}</thead><tbody>${body}</tbody><tfoot>${footRow(sh, cls, items, catsUsed)}</tfoot></table></div>` : `<p class="hint">${esc(cls.name)} 還沒有學生。</p>`}
+  </section>`;
+}
+function scoreClass(v, it){
+  if (v === '缺' || v === '免') return ' txt';
+  if (typeof v === 'number' && v > num(it.full)) return ' over';
+  return '';
+}
+function footRow(sh, cls, items, catsUsed){
+  const avg = arr => { const v = arr.filter(x => typeof x === 'number' && Number.isFinite(x)); return v.length ? v.reduce((a,b) => a+b, 0) / v.length : null; };
+  const results = cls.students.map(st => computeStudent(sh, cls.scores[st.id]));
+  return `<tr><td class="stick1"></td><td class="stick2" style="text-align:left;padding-left:10px">全班平均</td>
+    ${items.map(it => `<td>${fmt(avg(cls.students.map(st => (cls.scores[st.id]||{})[it.id])), 1)}</td>`).join('')}
+    ${catsUsed.map(cat => `<td>${fmt(avg(results.map(r => r.cats[cat.id])), 1)}</td>`).join('')}
+    <td class="tot">${fmt(avg(results.map(r => r.total)), +sh.calc.decimals)}</td></tr>`;
+}
+function refreshRow(sh, cls, sid){
+  const tr = document.querySelector(`#grid tr[data-sid="${sid}"]`); if (!tr) return;
+  const res = computeStudent(sh, cls.scores[sid]); const T = num(sh.calc.total);
+  const tot = tr.querySelector('td.tot'); tot.textContent = fmt(res.total, +sh.calc.decimals); tot.classList.toggle('low', res.total !== null && res.total < T/2);
+  tr.querySelectorAll('td.catv').forEach(td => { const v = res.cats[td.dataset.cat]; td.textContent = v === undefined || v === null ? '—' : fmt(v, 1); });
+  const items = orderedItems(sh); const catsUsed = sh.calc.mode === 'category' ? sh.categories.filter(cat => items.some(i => !i.bonus && i.catId === cat.id)) : [];
+  const tf = document.querySelector('#grid tfoot'); if (tf) tf.innerHTML = footRow(sh, cls, items, catsUsed);
+}
+function normScore(raw){
+  const s = String(raw).trim();
+  if (s === '') return {ok:true, v:null};
+  if (/^(缺|abs?|a)$/i.test(s)) return {ok:true, v:'缺'};
+  if (/^(免|ex|e|x)$/i.test(s)) return {ok:true, v:'免'};
+  if (/^(\d+\.?\d*|\.\d+)$/.test(s)) return {ok:true, v: Number(s)};
+  return {ok:false};
+}
+function setScore(sh, cls, sid, iid, raw){
+  const n = normScore(raw); if (!n.ok) return false;
+  cls.scores[sid] ||= {};
+  if (n.v === null) delete cls.scores[sid][iid]; else cls.scores[sid][iid] = n.v;
+  return true;
+}
+
+/* ---- tab 5 export ---- */
+function exportTab(sh){
+  const T = num(sh.calc.total); const d = +sh.calc.decimals;
+  const stats = sh.classes.map(c => ({c, s: classStats(sh, c)}));
+  const all = sh.classes.flatMap(c => c.students.map(st => computeStudent(sh, c.scores[st.id]).total)).filter(x => x !== null);
+  const avgAll = all.length ? all.reduce((a,b) => a+b, 0) / all.length : null;
+  const blanks = stats.reduce((a,x) => a + x.s.blanks, 0);
+  return `
+  <section class="card">
+    <h3>總覽</h3>
+    <div class="stats">
+      <div class="stat"><small>學生人數</small><b>${sh.classes.reduce((a,c) => a + c.students.length, 0)}</b></div>
+      <div class="stat"><small>全級平均（/${T}）</small><b>${fmt(avgAll, 1)}</b></div>
+      <div class="stat"><small>低於一半（${fmtN(T/2)} 分）</small><b>${all.filter(t => t < T/2).length}</b></div>
+      <div class="stat"><small>未輸入的空格</small><b style="color:${blanks ? 'var(--warn)' : 'var(--ok)'}">${blanks}</b></div>
+    </div>
+    ${sh.classes.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>班別</th><th>人數</th><th>平均</th><th>最高</th><th>最低</th><th>低於一半</th><th>空格</th></tr></thead><tbody>
+      ${stats.map(({c, s}) => `<tr><td><b>${esc(c.name)}</b></td><td class="num">${s.n}</td><td class="num">${fmt(s.avg, 1)}</td><td class="num">${fmt(s.max, d)}</td><td class="num">${fmt(s.min, d)}</td><td class="num">${s.low}</td>
+        <td>${s.blanks ? `<span class="pill warn" title="${esc(s.blankItems.join('、'))}">${s.blanks} 格・${esc(s.blankItems.slice(0,3).join('、'))}${s.blankItems.length > 3 ? '…' : ''}</span>` : '<span class="pill ok">齊全</span>'}</td></tr>`).join('')}
+    </tbody></table></div>` : ''}
+    ${blanks && sh.calc.blank === 'zero' ? '<p class="hint">空格目前當 0 分計算。若分數未收齊，可在「③ 計分方式」改為「不計入」。</p>' : ''}
+  </section>
+  <section class="card">
+    <h3>匯出 Excel 分紙</h3>
+    <p class="hint">每班一個工作表，每班剛好印一張 A4（連學生簽署欄）。總分欄是 Excel 公式：在 Excel 改分數、輸入「缺」或「免」都會自動重算。另附「評核項目」工作表列出每項內容和計分方法。</p>
+    <div class="modes">
+      <label class="mode"><input type="radio" name="expKind" id="expFilled" value="filled" checked><span><b>連分數</b><small>匯出這裏已輸入的分數，用來存檔或印出簽分。</small></span></label>
+      <label class="mode"><input type="radio" name="expKind" id="expBlank" value="blank"><span><b>空白分紙（給同事填寫）</b><small>只有學生名單、滿分、折算分和公式，分數留空。同事在 Excel 填分，總分自動計好，可直接影印簽分。沒有名單的班會預留空行。</small></span></label>
+    </div>
+    <div class="row">${sh.classes.map(c => `<label class="check"><input type="checkbox" data-exp="${c.id}" checked> ${esc(c.name)}</label>`).join('')}</div>
+    <div class="row"><label class="check"><input type="checkbox" id="optSign" checked> 加入「學生簽署」欄</label><label class="check"><input type="checkbox" id="optSummary" checked> 加入「總分表」（所有班別一頁）</label>
+      <label class="check"><input type="checkbox" id="optProtect" checked> 保護公式（只可填姓名、分數；Excel「校閱 → 取消保護工作表」可解除）</label>
+      <label class="check">沒有名單的班預留 <input class="inp num" id="optRows" value="35" inputmode="numeric" style="width:56px"> 行</label></div>
+    <div class="row"><button class="btn primary" data-act="exportXlsx" ${sh.classes.length ? '' : 'disabled'}>下載 Excel 分紙</button></div>
+  </section>
+  <section class="card">
+    <h3>備份</h3>
+    <p class="hint">${S.storage === 'cloud' ? '資料已自動儲存到你的帳戶，只有你自己看得到；在其他電腦打開這個頁面也會看到。' : '資料儲存在這個瀏覽器。建議定期下載備份。'}備份檔包含所有分紙，可用來還原或搬到其他電腦。</p>
+    <div class="row"><button class="btn" data-act="backup">下載備份（所有分紙）</button><label class="btn" for="restoreFile" style="cursor:pointer">還原備份…</label><input type="file" id="restoreFile" accept=".json" hidden></div>
+  </section>`;
+}
+
+/* ---- tab 6 typing conversion ---- */
+const TY_RX = {cls:/班別|班級|^班$|^class$/i, no:/班號|學號|座號|^no\.?$|number|class\s*no/i, name:/姓名|名字|^name|學生/i, score:/分數|得分|成績|score|marks?/i, wpm:/wpm|cpm|速度|每分鐘|字\/分|字數/i, acc:/準確|正確率|accuracy|^acc/i};
+const TY_LABEL = {cls:'班別', no:'班號', name:'姓名', score:'分數', wpm:'WPM', acc:'準確度'};
+function tyPlanName(p, U){ return {rank:'方案一：全級排名分級', wpm:`方案二：${U} 標準`, linear:'方案三：按比例計分'}[p]; }
+const TY_TESTS = {en:{name:'英文打字', unit:'WPM', th:[40,30,22,15], rx:/英文.*打字|英打|english|typing/i},
+                  zh:{name:'中文打字', unit:'字/分', th:[25,18,12,8], rx:/中文.*打字|中打|速成|倉頡|chinese/i}};
+function tyRoot(sh){
+  if (!sh.typing || !sh.typing.tests){ const old = sh.typing; sh.typing = {cur:'en', tests:{}}; if (old) sh.typing.tests.en = old; }
+  return sh.typing;
+}
+function tyKey(sh){ const r = tyRoot(sh); return TY_TESTS[r.cur] ? r.cur : 'en'; }
+function tyDefaults(sh){
+  const root = tyRoot(sh), key = tyKey(sh);
+  if (!root.tests[key]) root.tests[key] = {raw:null, map:{}, plan:'rank', basis:'score', itemId:null, p1:{pcts:[20,20,20,20,20]}, p2:{th: TY_TESTS[key].th.slice(), useAcc:true, accGate:90}, p3:{pct:10, step:1}};
+  return root.tests[key];
+}
+function tyNum(v){ if (v === null || v === undefined) return null; if (typeof v === 'number') return Number.isFinite(v) ? v : null; const s = String(v).replace(/[%,\s]/g, ''); if (s === '') return null; const n = parseFloat(s); return Number.isFinite(n) ? n : null; }
+function normCls(s){ return String(s || '').toUpperCase().replace(/（.*?）|\(.*?\)/g, '').replace(/^F\.?|^S\.?|^中/, '').replace(/[\s.]/g, ''); }
+function tyGuessItem(sh){ const T = TY_TESTS[tyKey(sh)]; return sh.items.find(i => T.rx.test(i.name)) || sh.items.find(i => /打字|typing/i.test(i.name)) || sh.items[0] || null; }
+function tyBuildRaw(sheets){
+  const multi = sheets.length > 1; let header = null; const rows = [];
+  const isHead = v => Object.values(TY_RX).some(rx => rx.test(String(v ?? '').trim()));
+  for (const s of sheets){
+    const g = s.grid.map(r => r ? Array.from(r, v => v ?? '') : []);
+    let hr = -1;
+    for (let r = 0; r < Math.min(8, g.length); r++){ if ((g[r] || []).filter(isHead).length >= 2){ hr = r; break; } }
+    if (!header){ const first = hr >= 0 ? g[hr] : (g.find(r => r.length) || []); header = (multi ? ['工作表'] : []).concat(first.map((v, i) => hr >= 0 && String(v).trim() ? String(v).trim() : `第 ${i + 1} 欄`)); }
+    for (let r = hr + 1; r < g.length; r++){ const row = g[r]; if (!row || !row.some(v => v !== '')) continue; rows.push((multi ? [s.name] : []).concat(row.map(v => typeof v === 'string' ? v.trim() : v))); }
+  }
+  header = header || [];
+  const w = Math.max(header.length, ...rows.map(r => r.length), 0);
+  for (let i = header.length; i < w; i++) header.push(`第 ${i + 1} 欄`);
+  return {header, rows, multi};
+}
+function tyAutoMap(raw){
+  const map = {};
+  raw.header.forEach((h, i) => { for (const k of ['no','cls','wpm','acc','score','name']) if (map[k] === undefined && TY_RX[k].test(h)){ map[k] = i; break; } });
+  if (map.cls === undefined && raw.multi) map.cls = 0;
+  const cols = raw.header.map((_, i) => raw.rows.map(r => r[i]).filter(v => v !== '' && v !== undefined && v !== null));
+  const used = new Set(Object.values(map));
+  const share = (vals, f) => vals.length ? vals.filter(f).length / vals.length : 0;
+  cols.forEach((vals, i) => {
+    if (used.has(i) || !vals.length) return;
+    if (map.cls === undefined && share(vals, v => /^(F\.?|S\.?|中)?\s*[1-6]\s*[A-Za-z]$/.test(String(v).trim())) > .8){ map.cls = i; used.add(i); return; }
+    if (map.no === undefined && share(vals, v => Number.isInteger(tyNum(v)) && tyNum(v) >= 1 && tyNum(v) <= 45) > .9 && new Set(vals).size > 3 && !/%/.test(vals.join(''))){ map.no = i; used.add(i); return; }
+    if (map.name === undefined && share(vals, v => typeof v === 'string' && (CJK.test(v) || /^[A-Za-z][A-Za-z ,.'-]{2,}$/.test(v))) > .8){ map.name = i; used.add(i); return; }
+  });
+  cols.forEach((vals, i) => {
+    if (used.has(i) || !vals.length || share(vals, v => tyNum(v) !== null) < .7) return;
+    const pct = /%/.test(vals.join(''));
+    if (pct && map.acc === undefined){ map.acc = i; used.add(i); return; }
+    for (const k of ['score','wpm','acc']) if (map[k] === undefined){ map[k] = i; used.add(i); return; }
+  });
+  return map;
+}
+function tyLevels(sh){ const ty = tyDefaults(sh); const it = sh.items.find(i => i.id === ty.itemId) || tyGuessItem(sh); const F = it ? num(it.full) : 50; return {it, F, levels: [1,.8,.6,.4,.2].map(x => roundTo(F * x, 2))}; }
+function tyCompute(sh){
+  const ty = tyDefaults(sh); const raw = ty.raw; if (!raw) return null;
+  const m = ty.map; const has = k => m[k] !== undefined && m[k] !== null && m[k] !== '';
+  const get = (row, k) => has(k) ? row[m[k]] : '';
+  const {it, F, levels} = tyLevels(sh);
+  const idx = new Map(), byName = new Map();
+  for (const c of sh.classes) for (const st of c.students){
+    idx.set(normCls(c.name) + '|' + String(st.no), {c, st});
+    for (const nm of [st.zh, st.en]) if (nm){ const k = nm.replace(/\s+/g, '').toUpperCase(); byName.set(k, byName.has(k) ? null : {c, st}); }
+  }
+  const basisWpm = ty.basis === 'wpm' || !has('score');
+  const recs = raw.rows.map((row, i) => {
+    const cls = String(get(row, 'cls') ?? '').trim(), no = tyNum(get(row, 'no')), name = String(get(row, 'name') ?? '').trim();
+    const score = tyNum(get(row, 'score')), wpm = tyNum(get(row, 'wpm')); let acc = tyNum(get(row, 'acc'));
+    if (acc !== null && acc <= 1 && !/%/.test(String(get(row, 'acc')))) acc = acc * 100;
+    let match = (cls && no !== null) ? (idx.get(normCls(cls) + '|' + no) || null) : null;
+    if (!match && name) match = byName.get(name.replace(/\s+/g, '').toUpperCase()) || null;
+    if (!match && !cls && no !== null && sh.classes.length === 1) match = idx.get(normCls(sh.classes[0].name) + '|' + no) || null;
+    const main = basisWpm ? wpm : score, sec = basisWpm ? score : wpm;
+    return {i, cls: match ? match.c.name : cls, no, name: name || (match ? stuName(match.st) : ''), score, wpm, acc, main, sec: sec ?? 0, done: main !== null && main > 0, blank: main === null, match, m1:0, m2:0, m3:0};
+  }).filter(r => r.cls || r.no !== null || r.name);
+  const D = recs.filter(r => r.done); const n = D.length;
+  const sorted = D.slice().sort((a, b) => b.main - a.main || b.sec - a.sec);
+  sorted.forEach((r, k) => { r.rank = (k > 0 && sorted[k-1].main === r.main && sorted[k-1].sec === r.sec) ? sorted[k-1].rank : k + 1; });
+  // plan 1: rank bands, ties take the higher band
+  const cum = []; let s = 0; ty.p1.pcts.forEach(p => { s += num(p); cum.push(s); });
+  const cuts = cum.map(c => Math.ceil(n * c / 100 - 1e-9));
+  for (const r of D){ let k = cuts.findIndex(c => r.rank <= c); if (k < 0) k = 4; r.m1 = levels[k]; }
+  // plan 2: fixed WPM thresholds, accuracy gate drops one level
+  const x2 = r => has('wpm') ? (r.wpm ?? 0) : r.main;
+  for (const r of D){ let k = ty.p2.th.findIndex(t => x2(r) >= num(t)); if (k < 0) k = 4; r.accDrop = false;
+    if (ty.p2.useAcc && has('acc') && r.acc !== null && r.acc < num(ty.p2.accGate) && k < 4){ k++; r.accDrop = true; } r.m2 = levels[k]; }
+  // plan 3: linear between the lowest completer and the top-x% reference
+  const lo = n ? sorted[n-1].main : 0, hi = n ? sorted[Math.min(n - 1, Math.max(0, Math.ceil(n * num(ty.p3.pct) / 100) - 1))].main : 0;
+  const step = num(ty.p3.step) || 1;
+  for (const r of D){ const f = hi > lo ? Math.min(1, Math.max(0, (r.main - lo) / (hi - lo))) : 1; r.m3 = roundTo(Math.round((levels[4] + (F - levels[4]) * f) / step + 1e-9) * step, 2); }
+  const matched = new Set(recs.filter(r => r.match).map(r => r.match.st.id));
+  const noRecord = []; for (const c of sh.classes) for (const st of c.students) if (!matched.has(st.id)) noRecord.push(`${c.name} ${st.no} ${stuName(st)}`);
+  return {recs, sorted, n, it, F, levels, lo, hi, basisWpm, has, noRecord, unmatched: recs.filter(r => !r.match)};
+}
+function tyAutoThresholds(sh){
+  const res = tyCompute(sh); if (!res || !res.n) return false;
+  const ty = tyDefaults(sh); const vals = res.recs.filter(r => r.done).map(r => res.has('wpm') ? (r.wpm ?? 0) : r.main).sort((a, b) => b - a);
+  let c = 0; ty.p2.th = ty.p1.pcts.slice(0, 4).map(p => { c += num(p); return Math.floor(vals[Math.min(vals.length - 1, Math.max(0, Math.ceil(vals.length * c / 100) - 1))]); });
+  return true;
+}
+function tyDist(res, key){
+  const L = res.levels; const b = [0,0,0,0,0,0]; let sum = 0;
+  for (const r of res.recs){ const v = r[key]; sum += v; if (!r.done){ b[5]++; continue; } let k = L.findIndex(l => v >= l - 1e-9); if (k < 0) k = 4; b[k]++; }
+  return {b, avg: res.recs.length ? sum / res.recs.length : null};
+}
+function tyDistHTML(res, key){
+  const {b, avg} = tyDist(res, key); const max = Math.max(1, ...b); const L = res.levels;
+  const labels = [fmtN(L[0]), ...L.slice(1).map(l => fmtN(l) + '+'), '0'];
+  return `<div class="tybars">${b.map((c, k) => `<div class="tybar"><span class="num">${labels[k]}</span><i style="width:${c / max * 100}%"></i><b class="num">${c}</b></div>`).join('')}</div><div class="hint" style="font-size:12px">平均 <b class="num">${fmt(avg, 1)}</b> / ${fmtN(res.F)}（包括未完成）</div>`;
+}
+function tyIn(k, v, w = 64, extra = ''){ return `<input class="inp num" data-f="ty" data-k="${k}" value="${esc(v)}" inputmode="decimal" style="width:${w}px" ${extra}>`; }
+function typingTab(sh){
+  const ty = tyDefaults(sh); const res = tyCompute(sh); const TK = tyKey(sh), TT = TY_TESTS[TK], U = TT.unit; const LBL = {...TY_LABEL, wpm: U === 'WPM' ? 'WPM' : '速度（' + U + '）'};
+  const chips = `<div class="chips" role="group" aria-label="打字測試">${Object.entries(TY_TESTS).map(([k, t]) => `<button class="chip" data-act="tyTest" data-k="${k}" aria-pressed="${k === TK}">${t.name}${tyRoot(sh).tests[k] && tyRoot(sh).tests[k].raw ? `<span class="count">${tyRoot(sh).tests[k].raw.rows.length}人</span>` : ''}</button>`).join('')}</div>`;
+  const raw = ty.raw;
+  const inputCard = `<section class="card">
+    <div class="card-head"><div class="row"><h3>${TT.name}成績</h3>${chips}</div>${raw ? `<button class="btn sm" data-act="tyClear">清除，重新貼上</button>` : ''}</div>
+    ${raw ? `<p class="hint">已讀入 ${raw.rows.length} 行。請確認每一欄的意思：</p>
+      <div class="row">${['cls','no','name','score','wpm','acc'].map(k => `<div class="field" style="width:130px"><label>${LBL[k]}</label><select class="inp" data-f="ty" data-k="map.${k}"><option value="">（沒有）</option>${raw.header.map((h, i) => `<option value="${i}"${ty.map[k] === i ? ' selected' : ''}>${esc(h)}${raw.rows[0] && raw.rows[0][i] !== undefined && raw.rows[0][i] !== '' ? '：' + esc(String(raw.rows[0][i]).slice(0, 10)) : ''}</option>`).join('')}</select></div>`).join('')}</div>
+      ${res ? `<div class="sumline"><span>完成 <b>${res.n}</b> 人</span><span>未完成／零分 <b>${res.recs.length - res.n}</b> 人</span><span>配對到分紙學生 <b>${res.recs.length - res.unmatched.length}</b> / ${res.recs.length}</span>
+        ${res.unmatched.length ? `<span class="pill warn" title="${esc(res.unmatched.map(r => `${r.cls} ${r.no ?? ''} ${r.name}`).join('、'))}">${res.unmatched.length} 行未能配對</span>` : ''}
+        ${res.noRecord.length ? `<span class="pill" title="${esc(res.noRecord.join('、'))}">分紙中 ${res.noRecord.length} 人沒有打字紀錄</span>` : ''}</div>` : ''}`
+    : `<p class="hint">把全級的打字成績貼上（可以從打字平台或 Excel 直接複製，最好連標題行），或選擇檔案。需要班別、班號（或姓名），以及分數及／或 WPM；有準確度更好。</p>
+      <div class="grid3"><div class="sub"><h4>貼上成績</h4><textarea class="inp" id="tyPaste" placeholder="班別	班號	姓名	分數	${U}	準確度&#10;3A	1	陳大文	86	32	96%&#10;3A	2	李小晴	74	27	91%"></textarea><div><button class="btn sm primary" data-act="tyRead">讀取</button></div></div>
+      <div class="sub"><h4>從檔案</h4><label class="drop"><input type="file" id="tyFile" accept=".xlsx,.xlsm,.csv,.txt"><span><b>選擇檔案</b></span><span class="muted" style="font-size:12px">每個工作表可以是一班；沒有「班別」欄時用工作表名稱</span></label></div></div>`}
+  </section>`;
+  if (!res) return inputCard;
+  const L = res.levels; const basisName = res.basisWpm ? U : '分數';
+  const pc = ty.p1.pcts; const pcSum = pc.reduce((a, b) => a + num(b), 0);
+  const plans = `<section class="card">
+    <div class="card-head"><h3>換算方案</h3>
+      <div class="row"><label class="lbl" for="tyItem">填入項目</label><select class="inp" id="tyItem" data-f="ty" data-k="itemId" style="width:auto">${sh.items.map(i => `<option value="${i.id}"${res.it && i.id === res.it.id ? ' selected' : ''}>${esc(i.name)}（/${fmtN(num(i.full))}）</option>`).join('')}</select>
+        ${res.has('score') && res.has('wpm') ? `<label class="lbl" for="tyBasis">排名依據</label><select class="inp" id="tyBasis" data-f="ty" data-k="basis" style="width:auto"><option value="score"${ty.basis !== 'wpm' ? ' selected' : ''}>分數（同分比速度）</option><option value="wpm"${ty.basis === 'wpm' ? ' selected' : ''}>速度（同速比分數）</option></select>` : ''}</div></div>
+    <p class="hint">三個方案同時計算，下面的結果表並排列出，方便比較。沒有完成或零分一律 0 分。分級分數按項目滿分 ${fmtN(res.F)} 計：${L.map(fmtN).join('、')}。</p>
+    <div class="typlans">
+      <div class="typlan"><div class="row" style="justify-content:space-between"><label class="check"><input type="radio" name="typlan" data-f="ty" data-k="plan" value="rank" ${ty.plan === 'rank' ? 'checked' : ''}><b>方案一：全級排名分級</b></label></div>
+        <small>只計完成的 ${res.n} 人，按${basisName}由高至低排名，每段人數比例如下。同分一律拿較高的一級。</small>
+        <div class="row" style="gap:6px">${L.map((l, k) => `<div class="field" style="width:auto"><label>${fmtN(l)} 分</label><div class="row" style="flex-wrap:nowrap;gap:2px">${tyIn('p1.pcts.' + k, pc[k], 44)}<span>%</span></div></div>`).join('')}</div>
+        ${Math.abs(pcSum - 100) > 1e-6 ? `<span class="pill warn">合計 ${fmtN(pcSum)}%，應為 100%</span>` : ''}
+        ${tyDistHTML(res, 'm1')}</div>
+      <div class="typlan"><label class="check"><input type="radio" name="typlan" data-f="ty" data-k="plan" value="wpm" ${ty.plan === 'wpm' ? 'checked' : ''}><b>方案二：${U} 標準</b></label>
+        <small>預先定好速度，達到就有該級分數，學生知道目標。${res.has('wpm') ? '' : '（沒有速度欄，暫用分數）'}</small>
+        <div class="row" style="gap:6px">${L.slice(0, 4).map((l, k) => `<div class="field" style="width:70px"><label>${fmtN(l)} 分：≥</label>${tyIn('p2.th.' + k, ty.p2.th[k], 58)}</div>`).join('')}<div class="field" style="width:70px"><label>${fmtN(L[4])} 分</label><span class="muted" style="font-size:12px;padding-top:6px">其餘完成者</span></div></div>
+        ${res.has('acc') ? `<div class="row"><span class="check"><input type="checkbox" data-f="ty" data-k="p2.useAcc" ${ty.p2.useAcc ? 'checked' : ''}> 準確度低於</span>${tyIn('p2.accGate', ty.p2.accGate, 52)}<span>% 降一級</span></div>` : '<span class="hint" style="font-size:12px">貼上的資料沒有準確度，不設準確度門檻。</span>'}
+        <div><button class="btn sm" data-act="tyAuto">按今次全級成績自動定分界</button></div>${TK === 'zh' ? '<span class="hint" style="font-size:12px">中文打字的預設分界只供參考，請按學生程度調整，或用自動定分界。</span>' : ''}
+        ${tyDistHTML(res, 'm2')}</div>
+      <div class="typlan"><label class="check"><input type="radio" name="typlan" data-f="ty" data-k="plan" value="linear" ${ty.plan === 'linear' ? 'checked' : ''}><b>方案三：按比例計分</b></label>
+        <small>完成者最低 ${fmtN(L[4])} 分；全級最高的 ${fmtN(num(ty.p3.pct))}% 拿滿分；中間按${basisName}直線換算，沒有「差一點跌一級」的問題。</small>
+        <div class="row"><span>最高</span>${tyIn('p3.pct', ty.p3.pct, 52)}<span>% 拿滿分，取至</span><select class="inp" data-f="ty" data-k="p3.step" style="width:auto">${[[1,'整數'],[0.5,'0.5 分']].map(([v, l]) => `<option value="${v}"${num(ty.p3.step) === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+        <span class="hint" style="font-size:12px">${basisName} ${fmtN(res.lo)} → ${fmtN(L[4])} 分；${basisName} ${fmtN(res.hi)} 或以上 → ${fmtN(res.F)} 分</span>
+        ${tyDistHTML(res, 'm3')}</div>
+    </div>
+    <div class="row"><button class="btn primary" data-act="tyApply" ${res.it ? '' : 'disabled'}>把「${tyPlanName(ty.plan, U)}」填入「${esc(res.it ? res.it.name : '')}」</button><span class="hint" style="font-size:12.5px">只填入配對到的學生；沒有完成的會填 0（空白紀錄填「缺」，同樣當 0 分）。</span></div>
+  </section>`;
+  const key = {rank:'m1', wpm:'m2', linear:'m3'}[ty.plan];
+  const order = res.recs.slice().sort((a, b) => (a.done === b.done ? 0 : a.done ? -1 : 1) || (a.rank || 0) - (b.rank || 0) || String(a.cls).localeCompare(String(b.cls)) || (a.no || 0) - (b.no || 0));
+  const th = k => `<th class="num${key === k ? ' tysel' : ''}">${{m1:'方案一',m2:'方案二',m3:'方案三'}[k]}</th>`;
+  const table = `<section class="card">
+    <div class="card-head"><h3>結果</h3><span class="hint">按${basisName}排名；已選的方案以黃色顯示</span></div>
+    <div class="tbl-wrap" style="max-height:60vh"><table class="tbl tytbl"><thead><tr><th>排名</th><th>班別</th><th>班號</th><th>姓名</th><th>分數</th><th>${U}</th><th>準確度</th>${th('m1')}${th('m2')}${th('m3')}</tr></thead><tbody>
+      ${order.map(r => `<tr${r.done ? '' : ' class="muted"'}><td class="num">${r.done ? r.rank : '—'}</td><td>${esc(r.cls)}</td><td class="num">${r.no ?? ''}</td><td>${esc(r.name)}${r.match ? '' : ' <span class="pill warn">未配對</span>'}</td>
+        <td class="num">${r.score ?? '—'}</td><td class="num">${r.wpm ?? '—'}</td><td class="num">${r.acc === null ? '—' : fmtN(r.acc) + '%'}</td>
+        ${['m1','m2','m3'].map(k => `<td class="num${key === k ? ' tysel' : ''}">${r.done ? fmtN(r[k]) : 0}${k === 'm2' && r.accDrop ? ' <span class="pill" title="準確度未達標，降一級">↓</span>' : ''}</td>`).join('')}</tr>`).join('')}
+    </tbody></table></div>
+  </section>`;
+  return inputCard + plans + table;
+}
+async function tyLoadSheets(sh, sheets){
+  const ty = tyDefaults(sh); const raw = tyBuildRaw(sheets);
+  if (!raw.rows.length){ toast('讀不到資料'); return; }
+  ty.raw = raw; ty.map = tyAutoMap(raw); if (!ty.itemId){ const it = tyGuessItem(sh); ty.itemId = it ? it.id : null; }
+  if (!(ty.map.score !== undefined) && ty.map.wpm !== undefined) ty.basis = 'wpm';
+  touch(sh); renderTab();
+  toast(`已讀入 ${raw.rows.length} 行，請檢查欄位是否正確`);
+}
+
+/* ============ modals & toast ============ */
+let toastTimer = null;
+function toast(msg){ const r = $('#toastRoot'); r.innerHTML = `<div class="toast" role="status">${esc(msg)}</div>`; clearTimeout(toastTimer); toastTimer = setTimeout(() => r.innerHTML = '', 3200); }
+function openModal(html){ $('#modalRoot').innerHTML = `<div class="overlay" data-act="overlay"><div class="modal" role="dialog" aria-modal="true">${html}</div></div>`; const f = $('#modalRoot .modal input:not([type=radio]):not([type=checkbox]), #modalRoot .modal select'); if (f) f.focus(); }
+function closeModal(){ $('#modalRoot').innerHTML = ''; }
+function confirmModal(title, msg, okLabel, fn){
+  openModal(`<h2>${esc(title)}</h2><p class="hint">${esc(msg)}</p><div class="foot"><button class="btn" data-act="close">取消</button><button class="btn danger" data-act="confirmOk">${esc(okLabel)}</button></div>`);
+  pendingConfirm = fn;
+}
+let pendingConfirm = null;
+function sheetForm(sh){
+  const isNew = !sh; const o = sh || {subject:'computer', form:'F3', year: schoolYear(), term: TERMS[0], teacher: S.settings.teacher || ''};
+  const others = S.sheets;
+  return `<h2>${isNew ? '新增分紙' : '修改分紙資料'}</h2>
+    <div class="subjects">${SUBJ_ORDER.map(k => `<label class="subj" style="color:${SUBJ[k].color}"><input type="radio" name="fSubj" value="${k}" ${o.subject === k ? 'checked' : ''}><b>${SUBJ[k].name}</b><small>${esc(SUBJ[k].full)}<br>${SUBJ[k].blurb}</small></label>`).join('')}</div>
+    <div class="form2">
+      <div class="field"><label for="fForm">級別</label><select class="inp" id="fForm">${FORMS.map(f => `<option value="${f}"${o.form === f ? ' selected' : ''}>${FORM_ZH[f]}（${f}）</option>`).join('')}</select></div>
+      <div class="field"><label for="fTerm">學期</label><select class="inp" id="fTerm">${TERMS.map(t => `<option${o.term === t ? ' selected' : ''}>${t}</option>`).join('')}</select></div>
+      <div class="field"><label for="fYear">學年</label><input class="inp" id="fYear" value="${esc(o.year)}"></div>
+      <div class="field"><label for="fTeacher">任教老師</label><input class="inp" id="fTeacher" value="${esc(o.teacher)}" placeholder="例如 YCH / CL"></div>
+    </div>
+    ${isNew ? `<div class="form2">
+      <div class="field"><label for="fTpl">評核項目</label><select class="inp" id="fTpl"><option value="tpl">用科目範本（之後可修改）</option><option value="blank">空白，自己加</option>${others.map(s => `<option value="copy:${s.id}">複製：${esc(sheetTitle(s))} ${esc(s.term)}（${esc(s.year)}）</option>`).join('')}</select></div>
+      <div class="field"><label for="fRoster">學生名單</label><select class="inp" id="fRoster"><option value="">稍後匯入</option>${others.filter(s => s.classes.length).map(s => `<option value="${s.id}">複製自：${esc(sheetTitle(s))} ${esc(s.term)}（${s.classes.map(c => c.name).join('、')}）</option>`).join('')}</select></div>
+    </div>` : ''}
+    <div class="foot"><button class="btn" data-act="close">取消</button><button class="btn primary" data-act="${isNew ? 'createSheet' : 'saveSheetInfo'}">${isNew ? '建立分紙' : '儲存'}</button></div>`;
+}
+function readSheetForm(){
+  return {subject: ($('#modalRoot input[name=fSubj]:checked') || {}).value || 'computer', form: $('#fForm').value, term: $('#fTerm').value, year: $('#fYear').value.trim() || schoolYear(), teacher: $('#fTeacher').value.trim()};
+}
+
+/* ============ demo ============ */
+function makeDemo(){
+  const sh = newSheet({subject:'computer', form:'F3', year: schoolYear(), term:'第一學期', teacher:'示範'});
+  const names = [['陳大文','CHAN TAI MAN','M'],['李小晴','LEE SIU CHING','F'],['張志明','CHEUNG CHI MING','M'],['黃詠詩','WONG WING SZE','F'],['林家豪','LAM KA HO','M'],['何美玲','HO MEI LING','F'],['吳俊傑','NG CHUN KIT','M'],['梁嘉欣','LEUNG KA YAN','F']];
+  const cls = {id: uid('k'), name:'3X（示範）', students: names.map((n,k) => ({id: uid('s'), no: k+1, zh: n[0], en: n[1], sex: n[2]})), scores:{}};
+  const its = orderedItems(sh); let seed = 7;
+  const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+  cls.students.forEach((st, k) => { cls.scores[st.id] = {}; its.forEach(it => { const f = num(it.full); let v = Math.round((0.55 + rnd() * 0.45) * f * 2) / 2; if (f === 50) v = [20,30,40,50][Math.floor(rnd()*4)]; cls.scores[st.id][it.id] = Math.min(f, v); }); });
+  cls.scores[cls.students[6].id][its[3].id] = '缺';
+  sh.classes.push(cls);
+  return sh;
+}
+
+/* ============ events ============ */
+const actions = {
+  tyTest(el){ const sh = cur(); tyRoot(sh).cur = el.dataset.k; touch(sh); renderTab(); },
+  tyRead(){ const sh = cur(); const t = $('#tyPaste').value; if (!t.trim()){ toast('請先貼上成績'); return; } tyLoadSheets(sh, [{name:'貼上', grid: parseDelimited(t)}]); },
+  tyClear(){ const sh = cur(); tyDefaults(sh).raw = null; touch(sh); renderTab(); },
+  tyAuto(){ const sh = cur(); if (tyAutoThresholds(sh)){ touch(sh); renderTab(); toast('已按方案一的人數比例，定出今次的 WPM 分界'); } },
+  tyApply(){ const sh = cur(); const res = tyCompute(sh); const ty = tyDefaults(sh); if (!res || !res.it) return;
+    const key = {rank:'m1', wpm:'m2', linear:'m3'}[ty.plan]; const recs = res.recs.filter(r => r.match); const U = TY_TESTS[tyKey(sh)].unit;
+    const existing = recs.filter(r => { const v = (r.match.c.scores[r.match.st.id] || {})[res.it.id]; return v !== undefined && v !== null && v !== ''; }).length;
+    const go = () => { for (const r of recs){ const c = r.match.c; c.scores[r.match.st.id] ||= {}; c.scores[r.match.st.id][res.it.id] = r.done ? r[key] : (r.blank ? '缺' : 0); }
+      touch(sh); renderTab(); toast(`已把 ${recs.length} 位學生的分數填入「${res.it.name}」`); };
+    if (existing) confirmModal('覆蓋現有分數？', `「${res.it.name}」已有 ${existing} 位學生的分數，填入後會改為「${tyPlanName(ty.plan, U)}」的結果。`, '覆蓋', go); else go(); },
+  newSheet(){ openModal(sheetForm(null)); },
+  close(){ closeModal(); },
+  overlay(el, e){ if (e.target === el) closeModal(); },
+  confirmOk(){ const f = pendingConfirm; pendingConfirm = null; closeModal(); if (f) f(); },
+  createSheet(){
+    const f = readSheetForm(); const tpl = $('#fTpl').value; const rosterFrom = $('#fRoster').value;
+    let template = null;
+    if (tpl === 'blank') template = {categories: CAT_PRESETS.slice(0, 5).map(n => ({id: uid('c'), name: n, weight: 20})), items: [], calc: {...makeTemplate(f.subject).calc}};
+    else if (tpl.startsWith('copy:')){ const src = S.sheets.find(s => s.id === tpl.slice(5)); if (src) template = copyScheme(src); }
+    const classes = rosterFrom ? copyClasses(S.sheets.find(s => s.id === rosterFrom)) : [];
+    const sh = newSheet({...f, template, classes});
+    S.settings.teacher = f.teacher; saveSettings();
+    S.sheets.push(sh); S.curId = sh.id; S.classId = null; S.tab = classes.length ? 'items' : 'roster'; S.importPreview = null;
+    closeModal(); touch(sh); uiSave(); renderAll(); toast('已建立分紙');
+  },
+  editSheet(){ openModal(sheetForm(cur())); },
+  saveSheetInfo(){ const sh = cur(); Object.assign(sh, readSheetForm()); closeModal(); touch(sh); renderAll(); },
+  dupSheet(){
+    const src = cur(); const t = copyScheme(src);
+    const sh = newSheet({subject: src.subject, form: src.form, year: src.year, term: src.term === '第一學期' ? '第二學期' : src.term, teacher: src.teacher, template: t, classes: copyClasses(src)});
+    S.sheets.push(sh); S.curId = sh.id; S.classId = null; touch(sh); uiSave(); renderAll(); toast('已複製項目及學生名單（不含分數）');
+  },
+  delSheet(){ const sh = cur(); confirmModal('刪除這份分紙？', `「${sheetTitle(sh)} ${sh.term}（${sh.year}）」及所有分數會被刪除，不能復原。可先在「⑤ 總覽及匯出」下載備份。`, '刪除', async () => { await removeSheet(sh.id); renderAll(); toast('已刪除'); }); },
+  openSheet(el){ S.curId = el.dataset.id; S.classId = null; S.importPreview = null; uiSave(); renderAll(); },
+  demo(){ const sh = makeDemo(); S.sheets.push(sh); S.curId = sh.id; S.classId = sh.classes[0].id; S.tab = 'scores'; touch(sh); uiSave(); renderAll(); },
+  tab(el){ S.tab = el.dataset.tab; uiSave(); renderMain(); },
+  pickClass(el){ S.classId = el.dataset.id; uiSave(); renderTab(); },
+  exClass(el){ S.classId = el.dataset.id; S.exStu = null; renderTab(); },
+  addClass(){ const sh = cur(); const name = $('#newClassName').value.trim(); if (!name){ toast('請輸入班別名稱'); return; }
+    if (sh.classes.some(c => c.name.toLowerCase() === name.toLowerCase())){ toast('已有這個班別'); return; }
+    const c = {id: uid('k'), name, students: [], scores: {}}; sh.classes.push(c); S.classId = c.id; touch(sh); renderAll(); },
+  delClass(){ const sh = cur(); const c = curClass(sh); confirmModal(`刪除 ${c.name}？`, '這班的學生名單及分數會被刪除。', '刪除', () => { sh.classes = sh.classes.filter(x => x.id !== c.id); S.classId = null; touch(sh); renderAll(); }); },
+  addStudent(){ const sh = cur(); const c = curClass(sh); const maxNo = c.students.reduce((a,s) => Math.max(a, +s.no || 0), 0); c.students.push({id: uid('s'), no: maxNo + 1, zh:'', en:'', sex:''}); touch(sh); renderAll(); const ins = document.querySelectorAll('[data-k="zh"]'); ins[ins.length-1]?.focus(); },
+  sortStudents(){ const sh = cur(); const c = curClass(sh); c.students.sort((a,b) => (+a.no || 999) - (+b.no || 999)); touch(sh); renderTab(); },
+  delStudent(el){ const sh = cur(); const c = curClass(sh); c.students = c.students.filter(s => s.id !== el.dataset.id); delete c.scores[el.dataset.id]; touch(sh); renderAll(); },
+  pasteImport(){ const t = $('#pasteBox').value; const name = $('#pasteClass').value.trim(); if (!t.trim()){ toast('請先貼上名單'); return; } if (!name){ toast('請填寫班別'); return; }
+    const st = rosterFromPaste(t); if (!st.length){ toast('讀不到名單'); return; } S.importPreview = [{name, students: st, include: true}]; S.importPreview.source = '貼上的名單'; renderTab(); },
+  applyImport(){ const sh = cur(); const pv = S.importPreview || []; let n = 0, last = null;
+    for (const p of pv) if (p.include && p.name.trim()){ last = applyRoster(sh, p.name, p.students); n++; }
+    S.importPreview = null; if (last) S.classId = last.id; touch(sh); renderAll(); toast(`已匯入 ${n} 班`); },
+  cancelImport(){ S.importPreview = null; renderTab(); },
+  copyRoster(){ const src = S.sheets.find(s => s.id === $('#copyFrom').value); if (!src) return;
+    S.importPreview = src.classes.map(c => ({name: c.name, students: c.students.map(s => ({no: s.no, zh: s.zh, en: s.en, sex: s.sex})), include: true}));
+    S.importPreview.source = `${sheetTitle(src)} ${src.term}`; renderTab(); },
+  catAdd(el){ const sh = cur(); sh.categories.push({id: uid('c'), name: el.dataset.name, weight: 0}); touch(sh); renderTab(); },
+  catAddCustom(){ const sh = cur(); const n = $('#customCat').value.trim(); if (!n) return; sh.categories.push({id: uid('c'), name: n, weight: 0}); touch(sh); renderTab(); },
+  catUp(el){ const sh = cur(); const i = sh.categories.findIndex(c => c.id === el.dataset.id); if (i > 0){ [sh.categories[i-1], sh.categories[i]] = [sh.categories[i], sh.categories[i-1]]; touch(sh); renderTab(); } },
+  catDel(el){ const sh = cur(); const id = el.dataset.id; const n = sh.items.filter(i => i.catId === id).length;
+    if (n){ toast(`這個類別還有 ${n} 個項目，請先刪除或移到其他類別`); return; }
+    sh.categories = sh.categories.filter(c => c.id !== id); touch(sh); renderTab(); },
+  itemAdd(el){ const sh = cur(); const cat = sh.categories.find(c => c.id === el.dataset.cat); const n = sh.items.filter(i => i.catId === cat.id).length;
+    const it = {id: uid('i'), catId: cat.id, name: `${cat.name} ${n + 1}`, content:'', date:'', full: 10, weight: 10, bonus: false};
+    let at = -1; sh.items.forEach((x, k) => { if (x.catId === cat.id) at = k; }); sh.items.splice(at + 1, 0, it);
+    touch(sh); renderTab(); const inp = document.querySelector(`tr[data-iid="${it.id}"] input[data-k="name"]`); if (inp){ inp.focus(); inp.select(); } },
+  itemUp(el){ const sh = cur(); const it = sh.items.find(i => i.id === el.dataset.id); const same = sh.items.filter(i => i.catId === it.catId); const k = same.indexOf(it);
+    if (k > 0){ const a = sh.items.indexOf(same[k-1]), b = sh.items.indexOf(it); [sh.items[a], sh.items[b]] = [sh.items[b], sh.items[a]]; touch(sh); renderTab(); } },
+  itemDel(el){ const sh = cur(); const it = sh.items.find(i => i.id === el.dataset.id);
+    const has = sh.classes.some(c => Object.values(c.scores).some(s => s && s[it.id] !== undefined));
+    const go = () => { sh.items = sh.items.filter(i => i.id !== it.id); sh.classes.forEach(c => Object.values(c.scores).forEach(s => { if (s) delete s[it.id]; })); touch(sh); renderTab(); };
+    if (has) confirmModal(`刪除「${it.name}」？`, '這個項目已經有學生分數，刪除後分數一併移除。', '刪除', go); else go(); },
+  autoWeights(){ const sh = cur(); autoCatWeights(sh.categories, sh.items); touch(sh); renderTab(); },
+  colTools(el){ const sh = cur(); const it = sh.items.find(i => i.id === el.dataset.id); const cls = curClass(sh);
+    openModal(`<h2>${esc(it.name)}</h2><p class="hint">${esc(cls.name)}・滿分 ${fmtN(num(it.full))}${it.content ? '・' + esc(it.content) : ''}</p>
+      <div class="row"><button class="btn" data-act="colFill" data-id="${it.id}" data-v="full">空格填滿分</button><button class="btn" data-act="colFill" data-id="${it.id}" data-v="0">空格填 0</button><button class="btn" data-act="colFill" data-id="${it.id}" data-v="免">全班豁免</button><button class="btn danger" data-act="colFill" data-id="${it.id}" data-v="clear">清除整欄</button></div>
+      <div class="foot"><button class="btn" data-act="close">關閉</button></div>`); },
+  colFill(el){ const sh = cur(); const cls = curClass(sh); const it = sh.items.find(i => i.id === el.dataset.id); const v = el.dataset.v;
+    for (const st of cls.students){ cls.scores[st.id] ||= {}; const cur0 = cls.scores[st.id][it.id]; const empty = cur0 === undefined || cur0 === '' || cur0 === null;
+      if (v === 'clear') delete cls.scores[st.id][it.id]; else if (v === '免') cls.scores[st.id][it.id] = '免'; else if (empty) cls.scores[st.id][it.id] = v === 'full' ? num(it.full) : 0; }
+    closeModal(); touch(sh); renderTab(); },
+  async copyTotals(){ const sh = cur(); const cls = curClass(sh);
+    const text = ['班號\t中文姓名\t英文姓名\t總分'].concat(cls.students.map(st => `${st.no}\t${st.zh}\t${st.en}\t${fmt(computeStudent(sh, cls.scores[st.id]).total, +sh.calc.decimals)}`)).join('\n');
+    try { await navigator.clipboard.writeText(text); toast(`已複製 ${cls.name} 的總分`); }
+    catch { openModal(`<h2>複製總分</h2><p class="hint">全選後按 Ctrl+C 複製。</p><textarea class="inp" id="copyArea" style="min-height:220px">${esc(text)}</textarea><div class="foot"><button class="btn" data-act="close">關閉</button></div>`); const a = $('#copyArea'); a.focus(); a.select(); } },
+  exportXlsx(){ const sh = cur(); const ids = [...document.querySelectorAll('[data-exp]')].filter(x => x.checked).map(x => x.dataset.exp);
+    if (!ids.length){ toast('請最少選一班'); return; }
+    const blank = $('#expBlank').checked; const rows = Math.max(1, Math.min(60, parseInt($('#optRows').value, 10) || 35));
+    const blob = exportMarksheet(sh, ids, {sign: $('#optSign').checked, summary: $('#optSummary').checked, protect: $('#optProtect').checked, blank, rows});
+    const fn = `${sh.form}_${SUBJ[sh.subject].name}_${sh.year}_${sh.term}_${blank ? '空白分紙' : '分紙'}.xlsx`.replace(/[\\/:*?"<>|\s]+/g, '_');
+    saveFile(fn, blob); },
+  backup(){ const data = JSON.stringify({app:'marksheet-tool', version:1, exportedAt: new Date().toISOString(), settings: S.settings, sheets: S.sheets}, null, 1);
+    saveFile(`分紙備份_${new Date().toISOString().slice(0,10)}.json`, new Blob([data], {type:'application/json'})); }
+};
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]'); if (!el) return;
+  const fn = actions[el.dataset.act]; if (!fn) return;
+  if (el.dataset.act === 'overlay' && e.target !== el) return;
+  fn(el, e);
+});
+document.addEventListener('change', async e => {
+  const t = e.target; const sh = cur();
+  if (t.id === 'tyFile' && t.files[0]){
+    try { const f = t.files[0]; const sheets = /\.(csv|txt)$/i.test(f.name) ? [{name: f.name.replace(/\.[^.]+$/, ''), grid: parseDelimited(await f.text())}] : await readXlsx(await f.arrayBuffer()); await tyLoadSheets(sh, sheets.filter(s => s.grid.some(r => r && r.length))); }
+    catch (err){ toast('讀取檔案失敗：' + (err.message || err)); }
+    t.value = ''; return;
+  }
+  if (t.id === 'rosterFile' && t.files[0]){ await handleRosterFile(t.files[0]); t.value = ''; return; }
+  if (t.id === 'restoreFile' && t.files[0]){
+    try { const d = JSON.parse(await t.files[0].text()); if (!Array.isArray(d.sheets)) throw new Error('格式不符');
+      let n = 0; for (const s of d.sheets){ if (!s || !s.id || !s.subject) continue; const i = S.sheets.findIndex(x => x.id === s.id); delete s.syncedAt; s.updatedAt = Date.now(); if (i >= 0) S.sheets[i] = s; else S.sheets.push(s); dirty.add(s.id); n++; }
+      if (d.settings) S.settings = {...S.settings, ...d.settings};
+      if (!S.curId && S.sheets[0]) S.curId = S.sheets[0].id; touch(null); renderAll(); toast(`已還原 ${n} 份分紙`);
+    } catch (err){ toast('還原失敗：' + err.message); }
+    t.value = ''; return;
+  }
+  const f = t.dataset.f; if (!f) return;
+  if (f === 'school'){ S.settings.school = t.value.trim(); saveSettings(); return; }
+  if (!sh) return;
+  if (f === 'className'){ const c = curClass(sh); const v = t.value.trim(); if (v){ c.name = v; touch(sh); renderAll(); } return; }
+  if (f === 'stu'){ const c = curClass(sh); const st = c.students.find(s => s.id === t.closest('tr').dataset.sid); if (!st) return; let v = t.value.trim(); if (t.dataset.k === 'no' && /^\d+$/.test(v)) v = +v; st[t.dataset.k] = v; touch(sh); renderSide(); return; }
+  if (f === 'pvInc'){ S.importPreview[+t.dataset.k].include = t.checked; return; }
+  if (f === 'pvName'){ S.importPreview[+t.dataset.k].name = t.value.trim(); renderTab(); return; }
+  if (f === 'catName'){ const c = sh.categories.find(x => x.id === t.dataset.id); if (c && t.value.trim()){ c.name = t.value.trim(); touch(sh); renderTab(); } return; }
+  if (f === 'catWeight'){ const c = sh.categories.find(x => x.id === t.dataset.id); const v = parseFloat(t.value); if (c && Number.isFinite(v) && v >= 0){ c.weight = v; touch(sh); } renderTab(); return; }
+  if (f === 'item'){
+    const it = sh.items.find(i => i.id === t.closest('tr').dataset.iid); if (!it) return; const k = t.dataset.k;
+    if (k === 'bonus'){ it.bonus = t.checked; if (it.bonus && num(it.weight) === num(it.full)) it.weight = roundTo(num(it.full) / 4, 1); }
+    else if (k === 'full' || k === 'weight'){ const v = parseFloat(t.value); if (!Number.isFinite(v) || v < 0 || (k === 'full' && v === 0)){ toast(k === 'full' ? '滿分要大於 0' : '請輸入正數'); renderTab(); return; }
+      if (k === 'full' && !it.bonus && num(it.weight) === num(it.full)) it.weight = v; it[k] = v; }
+    else it[k] = t.value.trim();
+    touch(sh); renderTab(); return;
+  }
+  if (f === 'calc'){
+    const k = t.dataset.k; const c = sh.calc;
+    if (k === 'cap') c.cap = t.checked;
+    else if (k === 'total'){ const v = parseFloat(t.value); if (Number.isFinite(v) && v > 0) c.total = v; else toast('學期總分要大於 0'); }
+    else if (k === 'decimals') c.decimals = +t.value;
+    else c[k] = t.value;
+    if (k === 'mode' && t.value === 'category'){ const tot = sh.categories.reduce((a,x) => a + num(x.weight), 0); if (!tot) autoCatWeights(sh.categories, sh.items); }
+    touch(sh); renderTab(); return;
+  }
+  if (f === 'ty'){
+    const ty = tyDefaults(sh); const path = t.dataset.k.split('.'); let o = ty; for (let i = 0; i < path.length - 1; i++) o = o[path[i]]; const last = path[path.length - 1];
+    if (path[0] === 'map') o[last] = t.value === '' ? undefined : +t.value;
+    else if (t.type === 'checkbox') o[last] = t.checked;
+    else if (/^p[123]$/.test(path[0])){ const v = parseFloat(t.value); if (!Number.isFinite(v) || v < 0){ toast('請輸入正數'); renderTab(); return; } o[last] = v; }
+    else o[last] = t.value;
+    touch(sh); renderTab(); return;
+  }
+  if (f === 'exStu'){ S.exStu = t.value; renderTab(); return; }
+});
+/* score grid: live input, keyboard, paste */
+document.addEventListener('input', e => {
+  const t = e.target; if (!t.classList || !t.classList.contains('sc')) return;
+  const sh = cur(); const cls = curClass(sh); const sid = t.closest('tr').dataset.sid; const it = sh.items.find(i => i.id === t.dataset.iid);
+  const ok = setScore(sh, cls, sid, it.id, t.value);
+  t.classList.toggle('bad', !ok);
+  if (ok){ const v = (cls.scores[sid] || {})[it.id]; t.className = 'sc' + scoreClass(v, it); refreshRow(sh, cls, sid); touch(sh); }
+});
+document.addEventListener('focusout', e => {
+  const t = e.target; if (!t.classList || !t.classList.contains('sc')) return;
+  const sh = cur(); const cls = curClass(sh); if (!sh || !cls) return; const sid = t.closest('tr')?.dataset.sid; if (!sid) return;
+  const v = (cls.scores[sid] || {})[t.dataset.iid]; if (!t.classList.contains('bad')) t.value = v === undefined ? '' : v;
+});
+document.addEventListener('focusin', e => { const t = e.target; if (t.classList && t.classList.contains('sc')){ t.select(); t._fresh = true; } });
+document.addEventListener('mouseup', e => { const t = e.target; if (t.classList && t.classList.contains('sc') && t._fresh){ e.preventDefault(); t._fresh = false; } });
+document.addEventListener('keydown', e => { if (e.target && e.target._fresh) e.target._fresh = false; }, true);
+function gridCell(r, c){ return document.querySelector(`#grid input.sc[data-r="${r}"][data-c="${c}"]`); }
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && $('#modalRoot').innerHTML){ closeModal(); return; }
+  const t = e.target; if (!t.classList || !t.classList.contains('sc')) return;
+  const r = +t.dataset.r, c = +t.dataset.c; let n = null;
+  if (e.key === 'Enter' || e.key === 'ArrowDown') n = gridCell(e.shiftKey && e.key === 'Enter' ? r - 1 : r + 1, c);
+  else if (e.key === 'ArrowUp') n = gridCell(r - 1, c);
+  else if (e.key === 'ArrowRight' && t.selectionEnd === t.value.length) n = gridCell(r, c + 1);
+  else if (e.key === 'ArrowLeft' && t.selectionStart === 0 && t.selectionEnd === 0 || e.key === 'ArrowLeft' && t.selectionStart === 0 && t.selectionEnd === t.value.length) n = gridCell(r, c - 1);
+  if (n){ e.preventDefault(); n.focus(); }
+  else if (e.key === 'Enter') e.preventDefault();
+});
+document.addEventListener('paste', e => {
+  const t = e.target; if (!t.classList || !t.classList.contains('sc')) return;
+  const text = (e.clipboardData || window.clipboardData).getData('text'); if (!/[\t\n]/.test(text.replace(/\n$/, ''))) return;
+  e.preventDefault();
+  const sh = cur(); const cls = curClass(sh); const items = orderedItems(sh);
+  const rows = text.replace(/\r/g, '').replace(/\n$/, '').split('\n').map(l => l.split('\t'));
+  const r0 = +t.dataset.r, c0 = +t.dataset.c; let n = 0, bad = 0;
+  rows.forEach((row, i) => row.forEach((v, j) => { const st = cls.students[r0 + i], it = items[c0 + j]; if (!st || !it) return; if (setScore(sh, cls, st.id, it.id, v)) n++; else bad++; }));
+  touch(sh); renderTab(); gridCell(r0, c0)?.focus();
+  toast(`已貼上 ${n} 個分數${bad ? `，${bad} 個無法讀取` : ''}`);
+});
+
+/* ============ boot ============ */
+(function boot(){
+  const saved = lsLoad();
+  if (saved){ S.sheets = Array.isArray(saved.sheets) ? saved.sheets : []; S.settings = {...S.settings, ...(saved.settings || {})}; }
+  const ui = uiLoad();
+  if (ui){ S.curId = ui.curId; S.tab = ui.tab || 'roster'; S.classId = ui.classId; }
+  if (!S.sheets.find(s => s.id === S.curId)) S.curId = S.sheets[0]?.id || null;
+  renderAll();
+  initCloud();
+})();
+</script>
+
+</body>
+</html>
