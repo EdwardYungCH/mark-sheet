@@ -628,37 +628,82 @@ function safeSheetName(n, used){
 }
 
 /* ============ export marksheet ============ */
+/* typing curve as an Excel formula (and the same rule in JS for cached values) */
+function tyCurveFormula(rule, S, W, A){
+  const M = rule.basisWpm ? W : S, Sx = rule.basisWpm ? S : W, L = rule.levels;
+  const m = `N(${M})`, s2 = `N(${Sx})`;
+  let core;
+  if (rule.plan === 'rank'){
+    const conds = rule.cuts.map((cu, k) => cu ? [`OR(${m}>${cu.main},AND(${m}=${cu.main},${s2}>=${cu.sec}))`, L[k]] : null).filter(Boolean);
+    core = conds.reduceRight((acc, [c, v]) => `IF(${c},${v},${acc})`, String(L[4]));
+  } else if (rule.plan === 'wpm'){
+    const x = rule.hasWpm ? `N(${W})` : m;
+    const lvl = rule.th.reduceRight((acc, t, k) => `IF(${x}>=${t},${k},${acc})`, '4');
+    const drop = rule.useAcc && A ? `+IF(AND(${A}<>"",N(${A})<${rule.accGate}),1,0)` : '';
+    core = `CHOOSE(MIN(4,${lvl}${drop})+1,${L.join(',')})`;
+  } else {
+    core = rule.hi > rule.lo ? `ROUND((${L[4]}+(${rule.F}-${L[4]})*MAX(0,MIN(1,(${m}-${rule.lo})/${rule.hi - rule.lo})))/${rule.step},0)*${rule.step}` : String(rule.F);
+  }
+  return `IF(OR(${S}="免",${W}="免"),"免",IF(AND(${S}="",${W}=""),"",IF(${m}<=0,0,${core})))`;
+}
+function tyCurveValue(rule, d0){
+  const S = d0 ? d0.score : null, W = d0 ? d0.wpm : null, A = d0 ? d0.acc : null;
+  if (S === '免' || W === '免') return '免';
+  const blank = v => v === null || v === undefined || v === '';
+  if (blank(S) && blank(W)) return '';
+  const N = v => typeof v === 'number' ? v : 0;
+  const m = N(rule.basisWpm ? W : S), s2 = N(rule.basisWpm ? S : W), L = rule.levels;
+  if (m <= 0) return 0;
+  if (rule.plan === 'rank'){ const k = rule.cuts.findIndex(cu => cu && (m > cu.main || (m === cu.main && s2 >= cu.sec))); return L[k < 0 ? 4 : k]; }
+  if (rule.plan === 'wpm'){ const x = rule.hasWpm ? N(W) : m; let k = rule.th.findIndex(t => x >= t); if (k < 0) k = 4; if (rule.useAcc && !blank(A) && N(A) < rule.accGate) k = Math.min(4, k + 1); return L[k]; }
+  if (!(rule.hi > rule.lo)) return rule.F;
+  return roundTo(Math.round((L[4] + (rule.F - L[4]) * Math.max(0, Math.min(1, (m - rule.lo) / (rule.hi - rule.lo)))) / rule.step + 1e-9) * rule.step, 2);
+}
+function tyRuleText(rule, it, unit){
+  const L = rule.levels, b = rule.basisWpm ? unit : '分數';
+  if (rule.plan === 'rank') return `${it.name}：全級排名分級（分界已固定）— ` + rule.cuts.map((cu, k) => cu ? `${fmtN(L[k])} 分：${b} ≥ ${fmtN(cu.main)}` : '').filter(Boolean).join('；') + `；其餘完成者 ${fmtN(L[4])} 分；未完成 0 分`;
+  if (rule.plan === 'wpm') return `${it.name}：${unit} 標準 — ` + rule.th.map((t, k) => `${fmtN(L[k])} 分：≥ ${fmtN(t)}`).join('；') + `；其餘完成者 ${fmtN(L[4])} 分${rule.useAcc ? `；準確度低於 ${fmtN(rule.accGate)}% 降一級` : ''}；未完成 0 分`;
+  return `${it.name}：按比例計分 — ${b} ${fmtN(rule.lo)} 得 ${fmtN(L[4])} 分，${b} ${fmtN(rule.hi)} 或以上得 ${fmtN(rule.F)} 分，中間直線換算；未完成 0 分`;
+}
 function buildClassSheet(sh, cls, opts, xs){
   // fixed layout: every class sheet has the same number of student rows (default 35), empty rows padded at the bottom
   const ROWS = opts.rows || 35, emptyCls = !cls.students.length;
   cls = {name: cls.name, scores: opts.blank ? {} : cls.scores,
     students: cls.students.concat(Array.from({length: Math.max(0, ROWS - cls.students.length)}, (_, k) => ({id: 'pad' + k, no: opts.blank && emptyCls ? k + 1 : '', zh: '', en: '', sex: '', ph: true})))};
   const T = num(sh.calc.total), d = +sh.calc.decimals, items = orderedItems(sh), mode = sh.calc.mode;
-  const hasEn = opts.hasEn, hasSex = opts.hasSex;
+  const nb = items.filter(it => !it.bonus && num(it.full) > 0), bonusItems = items.filter(it => it.bonus && num(it.full) > 0);
   let c = 1; const col = {};
-  col.no = c++; col.zh = c++; if (hasEn) col.en = c++; if (hasSex) col.sex = c++;
+  col.no = c++; col.zh = c++; if (opts.hasEn) col.en = c++; if (opts.hasSex) col.sex = c++;
   const nameCols = c - 1;
+  // ---- block A: 原得分 (inputs; typing items get 分數/速度/(準確度) inputs + a curve formula column)
   const itemCol = {}, rawCol = {};
-  items.forEach(it => { const ri = rawOf(sh, it); if (ri){ rawCol[it.id] = {s: c, w: c + 1, info: ri}; c += 2; } itemCol[it.id] = c++; });
+  items.forEach(it => { const ri = rawOf(sh, it);
+    if (ri && ri.rule){ rawCol[it.id] = {s: c, w: c + 1, a: ri.rule.useAcc ? c + 2 : null, info: ri}; c += ri.rule.useAcc ? 3 : 2; }
+    itemCol[it.id] = c++; });
   const startCol = it => rawCol[it.id] ? rawCol[it.id].s : itemCol[it.id];
-  const catCol = {}; const catsUsed = sh.categories.filter(cat => items.some(i => !i.bonus && i.catId === cat.id));
-  if (mode === 'category') catsUsed.forEach(cat => catCol[cat.id] = c++);
+  const aFirst = nameCols + 1, aLast = c - 1;
+  // ---- block B: 折算後分數 (formulas only): one column per category, plus 加分
+  const catsUsed = sh.categories.filter(cat => nb.some(i => i.catId === cat.id));
+  const catCol = {}; catsUsed.forEach(cat => catCol[cat.id] = c++);
+  if (bonusItems.length) col.bonus = c++;
+  const bFirst = catsUsed.length ? catCol[catsUsed[0].id] : (col.bonus || c), bLast = c - 1;
   col.total = c++; if (opts.sign) col.sign = c++;
   const lastCol = c - 1;
   const hasContent = items.some(i => (i.content || i.date));
-  const R = {cat:5, name:6};
-  let r = 7; if (hasContent) R.content = r++; R.full = r++; R.w = r++; R.first = r;
+  const R = {top:5, cat:6, name:7};
+  let r = 8; if (hasContent) R.content = r++; R.full = r++; R.w = r++; R.first = r;
   const S1 = SUBJ[sh.subject];
   xs.set(1, 1, `${S.settings.school || '學校名稱'}（${sh.year}）`, 1);
   xs.set(2, 1, `${S1.full} ${sh.term} 分數`, 2);
   xs.set(3, 1, `班別：${cls.name}　　任教老師：${opts.blank ? '＿＿＿＿＿＿' : (sh.teacher || '')}　　${FORM_ZH[sh.form] || sh.form}`, 2);
   xs.heights[1] = 24;
-  // header labels
-  xs.set(R.cat, col.no, '班號', 3); xs.merge(R.cat, col.no, R.name, col.no, 3);
-  xs.set(R.cat, col.zh, '中文姓名', 3); xs.merge(R.cat, col.zh, R.name, col.zh, 3);
-  if (col.en){ xs.set(R.cat, col.en, '英文姓名', 3); xs.merge(R.cat, col.en, R.name, col.en, 3); }
-  if (col.sex){ xs.set(R.cat, col.sex, '性別', 3); xs.merge(R.cat, col.sex, R.name, col.sex, 3); }
-  // category bands over items
+  // header: block titles
+  for (const [k, label] of [['no','班號'],['zh','中文姓名'],['en','英文姓名'],['sex','性別']]) if (col[k]){ xs.set(R.top, col[k], label, 3); xs.merge(R.top, col[k], R.name, col[k], 3); }
+  if (aLast >= aFirst){ xs.set(R.top, aFirst, '原得分（填寫真實分數）', 3); xs.merge(R.top, aFirst, R.top, aLast, 3); }
+  if (bLast >= bFirst){ xs.set(R.top, bFirst, mode === 'item' ? '折算後分數（公式）' : '類別得分（公式）', 3); xs.merge(R.top, bFirst, R.top, bLast, 3); }
+  xs.set(R.top, col.total, `${S1.name}\n總分`, 3); xs.merge(R.top, col.total, R.name, col.total, 3);
+  if (col.sign){ xs.set(R.top, col.sign, '學生簽署', 3); xs.merge(R.top, col.sign, R.name, col.sign, 3); }
+  // block A category bands + item names
   let i = 0;
   while (i < items.length){
     const cid = items[i].catId; let j = i; while (j + 1 < items.length && items[j+1].catId === cid) j++;
@@ -667,99 +712,116 @@ function buildClassSheet(sh, cls, opts, xs){
     i = j + 1;
   }
   items.forEach(it => { const rc = rawCol[it.id];
-    if (rc){ xs.set(R.name, rc.s, `${it.name}\n分數`, 3); xs.set(R.name, rc.w, `${it.name}\n${rc.info.unit || 'WPM'}`, 3); }
+    if (rc){ xs.set(R.name, rc.s, `${it.name}\n分數`, 3); xs.set(R.name, rc.w, `${it.name}\n${rc.info.unit || 'WPM'}`, 3); if (rc.a) xs.set(R.name, rc.a, `${it.name}\n準確度%`, 3); }
     xs.set(R.name, itemCol[it.id], it.name + (it.bonus ? '（加分）' : rc ? '\n換算得分' : ''), 3); });
-  if (mode === 'category' && catsUsed.length){
-    const c1 = catCol[catsUsed[0].id], c2 = catCol[catsUsed[catsUsed.length-1].id];
-    xs.set(R.cat, c1, '類別得分', 3); xs.merge(R.cat, c1, R.cat, c2, 3);
-    catsUsed.forEach(cat => xs.set(R.name, catCol[cat.id], `${cat.name}\n(${fmtN(num(cat.weight))}%)`, 3));
-  }
-  xs.set(R.cat, col.total, `${S1.name} 總分`, 3); xs.merge(R.cat, col.total, R.name, col.total, 3);
-  if (col.sign){ xs.set(R.cat, col.sign, '學生簽署', 3); xs.merge(R.cat, col.sign, R.name, col.sign, 3); }
+  // block B names
+  catsUsed.forEach(cat => { xs.set(R.cat, catCol[cat.id], cat.name, 3); xs.merge(R.cat, catCol[cat.id], R.name, catCol[cat.id], 3); });
+  if (col.bonus){ xs.set(R.cat, col.bonus, '加分', 3); xs.merge(R.cat, col.bonus, R.name, col.bonus, 3); }
   xs.heights[R.name] = 36;
   // content row
   if (R.content){
     xs.set(R.content, 1, '內容', 10); xs.merge(R.content, 1, R.content, nameCols, 10);
-    items.forEach(it => xs.set(R.content, itemCol[it.id], [it.content, it.date].filter(Boolean).join('｜'), 12));
+    items.forEach(it => xs.set(R.content, startCol(it), [it.content, it.date].filter(Boolean).join('｜'), 12));
     for (let k = nameCols + 1; k <= lastCol; k++) if (!xs.rows.get(R.content)?.has(k)) xs.set(R.content, k, null, 12);
     xs.heights[R.content] = 42;
   }
-  // full marks row
+  // full marks + weights rows
+  const catW = cat => mode === 'item' ? nb.filter(it => it.catId === cat.id).reduce((a, it) => a + num(it.weight), 0) : num(cat.weight);
   xs.set(R.full, 1, '滿分', 10); xs.merge(R.full, 1, R.full, nameCols, 10);
-  items.forEach(it => { xs.set(R.full, itemCol[it.id], num(it.full), 9); const rc = rawCol[it.id]; if (rc){ xs.set(R.full, rc.s, null, 9); xs.set(R.full, rc.w, null, 9); xs.set(R.w, rc.s, null, 9); xs.set(R.w, rc.w, null, 9); } });
-  catsUsed.forEach(cat => catCol[cat.id] && xs.set(R.full, catCol[cat.id], null, 9));
-  xs.set(R.full, col.total, T, 9); if (col.sign) xs.set(R.full, col.sign, null, 9);
-  // weights row
   xs.set(R.w, 1, mode === 'item' ? '折算分（加分項：最多加）' : '比重 %（加分項：最多加）', 10); xs.merge(R.w, 1, R.w, nameCols, 10);
-  items.forEach(it => xs.set(R.w, itemCol[it.id], (mode === 'item' || it.bonus) ? num(it.weight) : null, 9));
-  catsUsed.forEach(cat => catCol[cat.id] && xs.set(R.w, catCol[cat.id], num(cat.weight), 9));
-  xs.set(R.w, col.total, sh.calc.cap ? `上限 ${T}` : '', 9); if (col.sign) xs.set(R.w, col.sign, null, 9);
-  // students — formulas work out 缺 / 免 / blanks inside Excel, so later edits there stay correct
+  for (let k = nameCols + 1; k <= lastCol; k++){ xs.set(R.full, k, null, 9); xs.set(R.w, k, null, 9); }
+  items.forEach(it => { xs.set(R.full, itemCol[it.id], num(it.full), 9); xs.set(R.w, itemCol[it.id], (mode === 'item' || it.bonus) ? num(it.weight) : null, 9); });
+  catsUsed.forEach(cat => { xs.set(R.full, catCol[cat.id], catW(cat), 9); xs.set(R.w, catCol[cat.id], catW(cat), 9); });
+  if (col.bonus){ xs.set(R.full, col.bonus, bonusItems.reduce((a, it) => a + num(it.weight), 0), 9); }
+  xs.set(R.full, col.total, T, 9); xs.set(R.w, col.total, sh.calc.cap ? `上限 ${T}` : '', 9);
+  // students
   const totalStyle = d === 0 ? 6 : d === 2 ? 8 : 7;
   const totalsRef = []; totalsRef.cls = cls; totalsRef.enCol = col.en || null;
-  const firstItemCol = items.length ? itemCol[items[0].id] : null, lastItemCol = items.length ? itemCol[items[items.length - 1].id] : null;
   const skip = sh.calc.blank !== 'zero';
+  const put = v => v === undefined || v === null || v === '' ? null : v;
   cls.students.forEach((st, k) => {
-    const row = R.first + k; const sc = cls.scores[st.id] || {};
+    const row = R.first + k; const sc = {...(cls.scores[st.id] || {})};
     xs.set(row, col.no, st.no === '' || st.no === undefined ? null : (Number.isFinite(+st.no) ? +st.no : st.no), 17);
     xs.set(row, col.zh, st.zh || '', 16); if (col.en) xs.set(row, col.en, st.en || '', 16); if (col.sex) xs.set(row, col.sex, st.sex || '', 17);
-    items.forEach(it => { const v = sc[it.id]; xs.set(row, itemCol[it.id], v === undefined || v === null || v === '' ? null : v, 17);
-      const rc = rawCol[it.id]; if (rc){ const d0 = opts.blank ? null : rc.info.data[st.id]; xs.set(row, rc.s, d0 && d0.score !== null && d0.score !== undefined ? d0.score : null, 17); xs.set(row, rc.w, d0 && d0.wpm !== null && d0.wpm !== undefined ? d0.wpm : null, 17); } });
-    const res = computeStudent(sh, sc);
     const X = it => `${colName(itemCol[it.id])}${row}`;
     const fullRef = it => `${colName(itemCol[it.id])}$${R.full}`, wRef = it => `${colName(itemCol[it.id])}$${R.w}`;
+    const filled = [];
+    items.forEach(it => {
+      const rc = rawCol[it.id];
+      if (rc){
+        const d0 = opts.blank || st.ph ? null : rc.info.data[st.id];
+        const S0 = `${colName(rc.s)}${row}`, W0 = `${colName(rc.w)}${row}`, A0 = rc.a ? `${colName(rc.a)}${row}` : null;
+        xs.set(row, rc.s, put(d0 && d0.score), 17); xs.set(row, rc.w, put(d0 && d0.wpm), 17); if (rc.a) xs.set(row, rc.a, put(d0 && d0.acc), 17);
+        const cv = tyCurveValue(rc.info.rule, d0);
+        xs.set(row, itemCol[it.id], cv, 13, tyCurveFormula(rc.info.rule, S0, W0, A0));
+        if (cv === '') delete sc[it.id]; else sc[it.id] = cv;
+        filled.push(S0, W0);
+      } else { xs.set(row, itemCol[it.id], put(sc[it.id]), 17); filled.push(X(it)); }
+    });
+    const res = computeStudent(sh, sc);
+    const cnt = `COUNTA(${filled.join(',')})`;
     const cond = it => skip ? `AND(${X(it)}<>"免",${X(it)}<>"")` : `${X(it)}<>"免"`;
-    const rng = items.map(X).join(',');
-    const bonus = items.filter(it => it.bonus && num(it.full) > 0).map(it => `N(${X(it)})/${fullRef(it)}*${wRef(it)}`);
-    const nb = items.filter(it => !it.bonus && num(it.full) > 0);
+    // block B
+    const catRefs = catsUsed.map(cat => {
+      const its = nb.filter(it => it.catId === cat.id); const c0 = catCol[cat.id]; const wr = `${colName(c0)}$${R.w}`;
+      let f, v;
+      if (mode === 'item'){
+        f = `IF(${cnt}=0,"",${its.map(it => `N(${X(it)})/${fullRef(it)}*${wRef(it)}`).join('+')})`;
+        v = res.empty ? '' : its.reduce((a, it) => { const s0 = itemState(sh, sc[it.id]); return a + (s0.inc && s0.n ? s0.n / num(it.full) * num(it.weight) : 0); }, 0);
+      } else {
+        f = sh.calc.catMethod === 'avg'
+          ? `IF(${cnt}=0,"",IF((${its.map(it => `IF(${cond(it)},1,0)`).join('+')})=0,"免",(${its.map(it => `IF(${cond(it)},N(${X(it)})/${fullRef(it)},0)`).join('+')})/(${its.map(it => `IF(${cond(it)},1,0)`).join('+')})*${wr}))`
+          : `IF(${cnt}=0,"",IF((${its.map(it => `IF(${cond(it)},${fullRef(it)},0)`).join('+')})=0,"免",(${its.map(it => `N(${X(it)})`).join('+')})/(${its.map(it => `IF(${cond(it)},${fullRef(it)},0)`).join('+')})*${wr}))`;
+        v = res.empty ? '' : (res.cats[cat.id] === null || res.cats[cat.id] === undefined ? '免' : res.cats[cat.id]);
+      }
+      xs.set(row, c0, v, 13, f);
+      return `${colName(c0)}${row}`;
+    });
+    let bonusRef = null;
+    if (col.bonus){ bonusRef = `${colName(col.bonus)}${row}`; xs.set(row, col.bonus, res.empty ? '' : res.bonus, 13, `IF(${cnt}=0,"",${bonusItems.map(it => `N(${X(it)})/${fullRef(it)}*${wRef(it)}`).join('+')})`); }
     let numE = null, denE = null;
-    if (mode === 'item'){
-      if (nb.length){ numE = nb.map(it => `N(${X(it)})/${fullRef(it)}*${wRef(it)}`).join('+'); denE = nb.map(it => `IF(${cond(it)},${wRef(it)},0)`).join('+'); }
-    } else {
-      const cc = catsUsed.map(cat => {
-        const its = nb.filter(it => it.catId === cat.id); const c0 = catCol[cat.id]; const wr = `${colName(c0)}$${R.w}`;
-        const f = sh.calc.catMethod === 'avg'
-          ? `IF(COUNTA(${rng})=0,"",IF((${its.map(it => `IF(${cond(it)},1,0)`).join('+')})=0,"免",(${its.map(it => `IF(${cond(it)},N(${X(it)})/${fullRef(it)},0)`).join('+')})/(${its.map(it => `IF(${cond(it)},1,0)`).join('+')})*${wr}))`
-          : `IF(COUNTA(${rng})=0,"",IF((${its.map(it => `IF(${cond(it)},${fullRef(it)},0)`).join('+')})=0,"免",(${its.map(it => `N(${X(it)})`).join('+')})/(${its.map(it => `IF(${cond(it)},${fullRef(it)},0)`).join('+')})*${wr}))`;
-        const v = res.empty ? '' : (res.cats[cat.id] === null || res.cats[cat.id] === undefined ? '免' : res.cats[cat.id]);
-        xs.set(row, c0, v, 13, f);
-        return `${colName(c0)}${row}`;
-      });
-      if (cc.length){ numE = cc.map(c => `N(${c})`).join('+'); denE = cc.map(c => `IF(ISNUMBER(${c}),${c.replace(/\d+$/, '')}$${R.w},0)`).join('+'); }
+    if (catRefs.length){
+      numE = catRefs.map(x => `N(${x})`).join('+');
+      denE = mode === 'item' ? nb.map(it => `IF(${cond(it)},${wRef(it)},0)`).join('+') : catRefs.map(x => `IF(ISNUMBER(${x}),${x.replace(/\d+$/, '')}$${R.w},0)`).join('+');
     }
     if (numE === null) xs.set(row, col.total, '', totalStyle);
     else {
-      let expr = `(${numE})/(${denE})*${T}` + (bonus.length ? '+' + bonus.join('+') : '');
+      let expr = `(${numE})/(${denE})*${T}` + (bonusRef ? `+N(${bonusRef})` : '');
       if (sh.calc.cap) expr = `MIN(${T},${expr})`;
-      const f = `IF(COUNTA(${rng})=0,"",IF((${denE})=0,"",ROUND(${expr},${d})))`;
-      xs.set(row, col.total, res.total === null ? '' : res.total, totalStyle, f);
+      xs.set(row, col.total, res.total === null ? '' : res.total, totalStyle, `IF(${cnt}=0,"",IF((${denE})=0,"",ROUND(${expr},${d})))`);
     }
     totalsRef.push({st, ref: `${colName(col.total)}${row}`, row, value: res.total});
     if (col.sign) xs.set(row, col.sign, null, 18);
     xs.heights[row] = 22;
   });
-  // input check: number between 0 and full, or 缺 / 免
-  const lastStuRow = R.first + cls.students.length - 1;
-  if (cls.students.length) items.forEach(it => { const cn = colName(itemCol[it.id]); const a1 = `${cn}${R.first}`;
-    xs.validations.push({sqref: `${a1}:${cn}${lastStuRow}`, f: `OR(AND(ISNUMBER(${a1}),${a1}>=0,${a1}<=${cn}$${R.full}),${a1}="缺",${a1}="免")`, msg: `請輸入 0 至滿分之間的數字，或「缺」（缺交，當 0 分）、「免」（豁免，不計入）。`}); });
-  xs.protect = !!opts.protect;
-  // average row
+  // input checks
   const last = R.first + cls.students.length - 1;
+  if (cls.students.length){
+    items.forEach(it => {
+      const rc = rawCol[it.id];
+      if (rc) [rc.s, rc.w, rc.a].filter(Boolean).forEach(cc => { const a1 = `${colName(cc)}${R.first}`;
+        xs.validations.push({sqref: `${a1}:${colName(cc)}${last}`, f: `OR(AND(ISNUMBER(${a1}),${a1}>=0),${a1}="缺",${a1}="免")`, msg: '請輸入數字，或「缺」（缺考，當 0 分）、「免」（豁免，不計入）。'}); });
+      else { const cn = colName(itemCol[it.id]); const a1 = `${cn}${R.first}`;
+        xs.validations.push({sqref: `${a1}:${cn}${last}`, f: `OR(AND(ISNUMBER(${a1}),${a1}>=0,${a1}<=${cn}$${R.full}),${a1}="缺",${a1}="免")`, msg: '請輸入 0 至滿分之間的數字，或「缺」（缺交，當 0 分）、「免」（豁免，不計入）。'}); }
+    });
+  }
+  xs.protect = !!opts.protect;
+  // average row: every score / formula column
   const avgRow = last + 2;
   if (cls.students.length){
     xs.set(avgRow, 1, '平均', 10); xs.merge(avgRow, 1, avgRow, nameCols, 10);
-    const avgOf = vals => { const v = vals.filter(x => typeof x === 'number' && Number.isFinite(x)); return v.length ? v.reduce((a,b) => a+b, 0) / v.length : ''; };
-    items.forEach(it => { const cn = colName(itemCol[it.id]); xs.set(avgRow, itemCol[it.id], avgOf(cls.students.map(st => (cls.scores[st.id]||{})[it.id])), 11, `IFERROR(AVERAGE(${cn}${R.first}:${cn}${last}),"")`);
-      const rc = rawCol[it.id]; if (rc) [['s','score'],['w','wpm']].forEach(([k, f]) => { const cc = colName(rc[k]); xs.set(avgRow, rc[k], opts.blank ? '' : avgOf(cls.students.map(st => (rc.info.data[st.id] || {})[f])), 11, `IFERROR(AVERAGE(${cc}${R.first}:${cc}${last}),"")`); }); });
-    catsUsed.forEach(cat => { if (!catCol[cat.id]) return; const cn = colName(catCol[cat.id]); xs.set(avgRow, catCol[cat.id], avgOf(cls.students.map(st => computeStudent(sh, cls.scores[st.id]).cats[cat.id])), 11, `IFERROR(AVERAGE(${cn}${R.first}:${cn}${last}),"")`); });
-    const cn = colName(col.total);
-    xs.set(avgRow, col.total, avgOf(totalsRef.map(t => t.value)), 11, `IFERROR(AVERAGE(${cn}${R.first}:${cn}${last}),"")`);
+    for (let k = aFirst; k <= col.total; k++){
+      const vals = []; for (let rr = R.first; rr <= last; rr++){ const cell = xs.rows.get(rr)?.get(k); if (cell && typeof cell.v === 'number' && Number.isFinite(cell.v)) vals.push(cell.v); }
+      const cn = colName(k);
+      xs.set(avgRow, k, vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : '', 11, `IFERROR(AVERAGE(${cn}${R.first}:${cn}${last}),"")`);
+    }
   }
   // widths
   xs.widths[col.no] = 5; xs.widths[col.zh] = 10; if (col.en) xs.widths[col.en] = 20; if (col.sex) xs.widths[col.sex] = 5;
-  items.forEach(it => { xs.widths[itemCol[it.id]] = Math.max(7, Math.min(12, it.name.length * 1.6 + 2)); const rc = rawCol[it.id]; if (rc){ xs.widths[rc.s] = 7; xs.widths[rc.w] = 7; } });
-  catsUsed.forEach(cat => { if (catCol[cat.id]) xs.widths[catCol[cat.id]] = 9; });
-  xs.widths[col.total] = 9; if (col.sign) xs.widths[col.sign] = 18;
+  items.forEach(it => { xs.widths[itemCol[it.id]] = Math.max(7, Math.min(12, it.name.length * 1.6 + 2)); const rc = rawCol[it.id]; if (rc){ [rc.s, rc.w, rc.a].filter(Boolean).forEach(cc => xs.widths[cc] = 7); } });
+  catsUsed.forEach(cat => xs.widths[catCol[cat.id]] = Math.max(7, Math.min(10, cat.name.length * 1.8 + 2)));
+  if (col.bonus) xs.widths[col.bonus] = 6;
+  xs.widths[col.total] = 8; if (col.sign) xs.widths[col.sign] = 16;
   xs.merge(1, 1, 1, Math.min(lastCol, 8));
   xs.freeze = {x: nameCols, y: R.w};
   // A4, whole class on one page incl. signature column: pick the orientation that needs the least shrinking
@@ -769,7 +831,6 @@ function buildClassSheet(sh, cls, opts, xs){
   const fit = (pw, ph) => Math.min(1, pw / wPt, ph / hPt);
   const portrait = fit(552, 770), landscape = fit(799, 523);
   const orient = portrait >= landscape ? 'portrait' : 'landscape';
-  // spare page height (when width is the limit) goes into taller student rows → more room to sign
   const [pw, ph] = orient === 'portrait' ? [552, 770] : [799, 523];
   const sW = Math.min(1, pw / wPt), spare = ph / sW - hPt - 4;
   if (spare > 0 && cls.students.length){
@@ -824,6 +885,7 @@ function exportMarksheet(sh, classIds, opts){
   r++;
   xi.set(r++, 1, '計分方法：', 2);
   for (const line of formulaPlain(sh)) xi.set(r++, 1, line, 0);
+  for (const it of orderedItems(sh)){ const ri = rawOf(sh, it); if (ri && ri.rule) xi.set(r++, 1, tyRuleText(ri.rule, it, ri.unit || 'WPM'), 0); }
   xi.widths = {1:12, 2:22, 3:40, 4:12, 5:8, 6:12, 7:18}; xi.protect = !!opts.protect;
   sheets.push(xi);
   return buildXlsx(sheets);
@@ -1441,6 +1503,12 @@ function tyCompute(sh){
   const noRecord = recs.filter(r => r.placeholder).map(r => `${r.cls} ${r.no} ${r.name}`);
   return {recs, sorted, n, it, F, levels, lo, hi, basisWpm, has, noRecord, unmatched: recs.filter(r => !r.match), LK, P1, P2, P3};
 }
+function tyCutsOf(res){ return [0,1,2,3,4].map(k => { const m = res.recs.filter(r => r.done && r.b1 === k); if (!m.length) return null; const lowest = m.reduce((a, r) => (r.main < a.main || (r.main === a.main && r.sec < a.sec)) ? r : a); return {main: lowest.main, sec: lowest.sec}; }); }
+function tyRuleOf(res, ty){
+  return {plan: ty.plan, basisWpm: res.basisWpm, levels: res.levels.slice(), F: res.F, cuts: res.LK ? res.LK.cuts : tyCutsOf(res), th: res.P2.th.map(num),
+    useAcc: !!res.P2.useAcc && res.recs.some(r => r.acc !== null), accGate: num(res.P2.accGate), hasWpm: res.has('wpm') || res.recs.some(r => r.manual && r.wpm !== null),
+    lo: res.lo, hi: res.hi, step: num(res.P3.step) || 1};
+}
 function tyAutoThresholds(sh){
   const res = tyCompute(sh); if (!res || !res.n) return false;
   const ty = tyDefaults(sh); const vals = res.recs.filter(r => r.done).map(r => res.has('wpm') ? (r.wpm ?? 0) : r.main).sort((a, b) => b - a);
@@ -1575,7 +1643,7 @@ function makeDemo(){
 /* ============ events ============ */
 const actions = {
   tyLock(){ const sh = cur(); const ty = tyDefaults(sh); const res = tyCompute(sh); if (!res || !res.n) return;
-    const cuts = [0,1,2,3,4].map(k => { const m = res.recs.filter(r => r.done && r.b1 === k); if (!m.length) return null; const lowest = m.reduce((a, r) => (r.main < a.main || (r.main === a.main && r.sec < a.sec)) ? r : a); return {main: lowest.main, sec: lowest.sec}; });
+    const cuts = tyCutsOf(res);
     ty.lock = {at: Date.now(), n: res.n, basisWpm: res.basisWpm, cuts, p1: clone(ty.p1), p2: clone(ty.p2), p3: clone(ty.p3), lo: res.lo, hi: res.hi};
     touch(sh); renderTab(); toast('已鎖定計算方法'); },
   tyUnlock(){ const sh = cur(); confirmModal('解除鎖定？', '解除後會按所有已完成的學生（包括補考）重新計算分界，已有學生的換算分數可能改變。已填入分紙的分數不會自動更改，要再按「填入」才會更新。', '解除鎖定', () => { const ty = tyDefaults(sh); if (ty.lock){ ty.p1 = ty.lock.p1; ty.p2 = ty.lock.p2; ty.p3 = ty.lock.p3; ty.basis = ty.lock.basisWpm ? 'wpm' : 'score'; } delete ty.lock; touch(sh); renderTab(); }); },
@@ -1586,9 +1654,9 @@ const actions = {
   tyApply(){ const sh = cur(); const res = tyCompute(sh); const ty = tyDefaults(sh); if (!res || !res.it) return;
     const key = {rank:'m1', wpm:'m2', linear:'m3'}[ty.plan]; const recs = res.recs.filter(r => r.match && !r.placeholder && !r.dup); const U = TY_TESTS[tyKey(sh)].unit;
     const existing = recs.filter(r => { const v = (r.match.c.scores[r.match.st.id] || {})[res.it.id]; return v !== undefined && v !== null && v !== ''; }).length;
-    const go = () => { const info = {unit: U, test: tyKey(sh), data: {}};
+    const go = () => { const info = {unit: U, test: tyKey(sh), data: {}, rule: tyRuleOf(res, ty)};
       for (const r of recs){ const c = r.match.c; c.scores[r.match.st.id] ||= {}; c.scores[r.match.st.id][res.it.id] = r.done ? r[key] : (r.blank ? '缺' : 0);
-        if (!r.blank || r.score !== null || r.wpm !== null) info.data[r.match.st.id] = {score: r.score, wpm: r.wpm}; }
+        info.data[r.match.st.id] = r.blank && r.score === null && r.wpm === null ? {score: '缺', wpm: null, acc: null} : {score: r.score, wpm: r.wpm, acc: r.acc}; }
       sh.typeInfo ||= {}; sh.typeInfo[res.it.id] = info;
       touch(sh); renderTab(); toast(`已把 ${recs.length} 位學生的分數填入「${res.it.name}」`); };
     if (existing) confirmModal('覆蓋現有分數？', `「${res.it.name}」已有 ${existing} 位學生的分數，填入後會改為「${tyPlanName(ty.plan, U)}」的結果。`, '覆蓋', go); else go(); },
