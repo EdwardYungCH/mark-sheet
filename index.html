@@ -175,6 +175,8 @@ table.g{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%}
 .g td.tot.low{color:var(--redpen)}
 .g td.rawv{text-align:center;font-family:var(--f-num);color:var(--ink-2);min-width:54px;padding:0 6px;background:var(--sheet-2)}
 .g th.rawh{font-weight:500;color:var(--ink-2)}
+.g td.na{background:repeating-linear-gradient(135deg,var(--sheet-2) 0 6px,var(--paper) 6px 12px);color:var(--ink-3);text-align:center;font-size:12px}
+.pill.grp{background:var(--accent-soft);color:var(--accent);border-color:transparent;padding:0 6px;font-weight:600}
 .g td.catv{text-align:center;font-family:var(--f-num);color:var(--ink-2);min-width:70px;padding:0 6px}
 .g tfoot td{background:var(--sheet-2);font-family:var(--f-num);text-align:center;color:var(--ink-2);height:32px;position:sticky;bottom:0;z-index:2}
 .g tfoot td.stick1,.g tfoot td.stick2{z-index:4;background:var(--sheet-2);font-family:var(--f-body)}
@@ -307,7 +309,7 @@ function orderedItems(sh){
   return sh.items.map((it, i) => [it, i]).sort((a,b) => ((order.get(a[0].catId) ?? 999) - (order.get(b[0].catId) ?? 999)) || a[1]-b[1]).map(x => x[0]);
 }
 function rawOf(sh, it){ const ri = sh.typeInfo && sh.typeInfo[it.id]; return ri && ri.data && Object.keys(ri.data).length ? ri : null; }
-function sumWeights(sh){ return sh.items.filter(i => !i.bonus).reduce((a,i) => a + num(i.weight), 0); }
+function sumWeights(sh, grp){ return sh.items.filter(i => !i.bonus && (!sh.groups || !i.group || !grp || i.group === grp)).reduce((a,i) => a + num(i.weight), 0); }
 
 /* ============ templates ============ */
 function makeTemplate(subject){
@@ -328,10 +330,12 @@ function makeTemplate(subject){
     const cats = [dr, de, mk, ts, cp];
     const items = [
       item(dr,'均角投影法 (A2)',20,20), item(dr,'繪圖 bonus',8,2,{bonus:true}),
-      item(de,'電路圖 (B2)',40,25), item(mk,'紙電路製作 (C2)',40,30), item(ts,'測驗',26,20), item(cp,'課堂表現',10,5)
+      item(de,'電路圖 (B2)',40,25,{group:'上'}), item(de,'設計習作',40,25,{group:'下'}),
+      item(mk,'紙電路製作 (C2)',40,30,{group:'上'}), item(mk,'製作習作',40,30,{group:'下'}),
+      item(ts,'測驗',26,20), item(cp,'課堂表現',10,5)
     ];
-    autoCatWeights(cats, items);
-    return {categories: cats, items, calc:{mode:'item', total:50, cap:true, decimals:1, blank:'zero', catMethod:'sum'}};
+    autoCatWeights(cats, items.filter(i => i.group !== '下'));
+    return {categories: cats, items, groups: true, calc:{mode:'item', total:50, cap:true, decimals:1, blank:'zero', catMethod:'sum'}};
   }
   const hw = cat('功課'), ts = cat('測驗'), cp = cat('課堂表現');
   hw.weight = 30; ts.weight = 50; cp.weight = 20;
@@ -351,14 +355,14 @@ function newSheet(o){
   const t = o.template || makeTemplate(o.subject);
   return {
     id: uid('m'), subject:o.subject, form:o.form, year:o.year, term:o.term, teacher:o.teacher || '',
-    categories: t.categories, items: t.items, calc: t.calc,
+    categories: t.categories, items: t.items, calc: t.calc, groups: !!t.groups,
     classes: o.classes || [], createdAt: Date.now(), updatedAt: Date.now()
   };
 }
 function copyScheme(src){
   const map = {}; const cats = src.categories.map(c => { const n = {...c, id: uid('c')}; map[c.id] = n.id; return n; });
   const items = src.items.map(i => ({...i, id: uid('i'), catId: map[i.catId]}));
-  return {categories: cats, items, calc: clone(src.calc)};
+  return {categories: cats, items, calc: clone(src.calc), groups: !!src.groups};
 }
 function copyClasses(src, ids){
   return src.classes.filter(c => !ids || ids.includes(c.id)).map(c => ({id: uid('k'), name: c.name, students: c.students.map(s => ({...s, id: uid('s')})), scores:{}}));
@@ -371,9 +375,17 @@ function itemState(sh, v){
   if (v === undefined || v === null || v === '') return sh.calc.blank === 'zero' ? {inc:true, n:0, blank:true} : {inc:false, blank:true};
   return {inc:true, n:+v};
 }
-function computeStudent(sh, sc){
+const GROUPS = ['上', '下'];
+const GROUP_NAME = {'上':'上半班', '下':'下半班'};
+/* half-class groups: an item tagged 上/下 only counts for students of that group; a student with no group counts it only if a mark is entered */
+function applies(sh, it, grp, sc){
+  if (!sh.groups || !it.group) return true;
+  if (grp) return it.group === grp;
+  const v = sc ? sc[it.id] : undefined; return v !== undefined && v !== null && v !== '';
+}
+function computeStudent(sh, sc, grp){
   sc = sc || {};
-  const c = sh.calc, T = num(c.total), items = orderedItems(sh);
+  const c = sh.calc, T = num(c.total), items = orderedItems(sh).filter(it => applies(sh, it, grp, sc));
   if (!items.some(it => sc[it.id] !== undefined && sc[it.id] !== null && sc[it.id] !== '')) return {total:null, cats:{}, bonus:0, empty:true};
   let bonus = 0;
   for (const it of items) if (it.bonus){ const s = itemState(sh, sc[it.id]); if (s.inc && num(it.full) > 0) bonus += s.n / num(it.full) * num(it.weight); }
@@ -400,11 +412,11 @@ function computeStudent(sh, sc){
   return {total: roundTo(t, +c.decimals), cats, bonus};
 }
 function classStats(sh, cls){
-  const totals = cls.students.map(st => computeStudent(sh, cls.scores[st.id]).total).filter(x => x !== null);
+  const totals = cls.students.map(st => computeStudent(sh, cls.scores[st.id], st.group).total).filter(x => x !== null);
   const T = num(sh.calc.total);
   const avg = totals.length ? totals.reduce((a,b) => a+b, 0) / totals.length : null;
   let blanks = 0, blankItems = new Set();
-  for (const st of cls.students) for (const it of sh.items){ const v = (cls.scores[st.id]||{})[it.id]; if (v === undefined || v === '' || v === null){ blanks++; blankItems.add(it.name); } }
+  for (const st of cls.students) for (const it of sh.items.filter(i => !sh.groups || !i.group || !st.group || i.group === st.group)){ const v = (cls.scores[st.id]||{})[it.id]; if (v === undefined || v === '' || v === null){ blanks++; blankItems.add(it.name); } }
   return {n: cls.students.length, done: totals.length, avg, max: totals.length ? Math.max(...totals) : null, min: totals.length ? Math.min(...totals) : null, low: totals.filter(t => t < T/2).length, blanks, blankItems:[...blankItems]};
 }
 
@@ -577,10 +589,10 @@ const STYLES_XML = (() => {
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
     '<numFmts count="2"><numFmt numFmtId="164" formatCode="0.0"/><numFmt numFmtId="165" formatCode="0.00"/></numFmts>' +
     `<fonts count="5">${font()}${font('<b/>')}<font><b/><sz val="14"/><name val="${F}"/><family val="2"/></font><font><i/><sz val="9"/><color rgb="FF5F6B6E"/><name val="${F}"/><family val="2"/></font><font><b/><sz val="11"/><color rgb="FFB42318"/><name val="${F}"/><family val="2"/></font></fonts>` +
-    `<fills count="5"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>${fill('FFDDEBE7')}${fill('FFFFF2CC')}${fill('FFF2F4F4')}</fills>` +
+    `<fills count="6"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>${fill('FFDDEBE7')}${fill('FFFFF2CC')}${fill('FFF2F4F4')}${fill('FFD9DEDD')}</fills>` +
     `<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border>${side('left')}${side('right')}${side('top')}${side('bottom')}<diagonal/></border></borders>` +
     '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
-    '<cellXfs count="19">' +
+    '<cellXfs count="20">' +
       xf(0,0,0,0) +               // 0 default
       xf(0,2,0,0) +               // 1 title
       xf(0,1,0,0) +               // 2 subtitle
@@ -600,6 +612,7 @@ const STYLES_XML = (() => {
       xf(0,0,0,1,L,true) +        // 16 input text (unlocked)
       xf(0,0,0,1,C,true) +        // 17 input number (unlocked)
       xf(0,0,0,1,'',true) +       // 18 input plain (unlocked)
+      xf(0,0,5,1,C,true) +        // 19 not this student's half-class (grey)
     '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
 })();
 function buildXlsx(sheets){
@@ -673,7 +686,7 @@ function buildClassSheet(sh, cls, opts, xs){
   const T = num(sh.calc.total), d = +sh.calc.decimals, items = orderedItems(sh), mode = sh.calc.mode;
   const nb = items.filter(it => !it.bonus && num(it.full) > 0), bonusItems = items.filter(it => it.bonus && num(it.full) > 0);
   let c = 1; const col = {};
-  col.no = c++; col.zh = c++; if (opts.hasEn) col.en = c++; if (opts.hasSex) col.sex = c++;
+  if (isElective(sh)) col.cls = c++; col.no = c++; col.zh = c++; if (opts.hasEn) col.en = c++; if (opts.hasSex) col.sex = c++; if (sh.groups) col.grp = c++;
   const nameCols = c - 1;
   // ---- block A: 原得分 (inputs; typing items get 分數/速度/(準確度) inputs + a curve formula column)
   const itemCol = {}, rawCol = {};
@@ -695,10 +708,10 @@ function buildClassSheet(sh, cls, opts, xs){
   const S1 = SUBJ[sh.subject];
   xs.set(1, 1, `${S.settings.school || '學校名稱'}（${sh.year}）`, 1);
   xs.set(2, 1, `${S1.full} ${sh.term} 分數`, 2);
-  xs.set(3, 1, `班別：${cls.name}　　任教老師：${opts.blank ? '＿＿＿＿＿＿' : (sh.teacher || '')}　　${FORM_ZH[sh.form] || sh.form}`, 2);
+  xs.set(3, 1, `${GL(sh)}：${cls.name}　　任教老師：${opts.blank ? '＿＿＿＿＿＿' : (sh.teacher || '')}　　${FORM_ZH[sh.form] || sh.form}`, 2);
   xs.heights[1] = 24;
   // header: block titles
-  for (const [k, label] of [['no','班號'],['zh','中文姓名'],['en','英文姓名'],['sex','性別']]) if (col[k]){ xs.set(R.top, col[k], label, 3); xs.merge(R.top, col[k], R.name, col[k], 3); }
+  for (const [k, label] of [['cls','班別'],['no', isElective(sh) ? '學號' : '班號'],['zh','中文姓名'],['en','英文姓名'],['sex','性別'],['grp','組別\n(上/下)']]) if (col[k]){ xs.set(R.top, col[k], label, 3); xs.merge(R.top, col[k], R.name, col[k], 3); }
   if (aLast >= aFirst){ xs.set(R.top, aFirst, '原得分（填寫真實分數）', 3); xs.merge(R.top, aFirst, R.top, aLast, 3); }
   if (bLast >= bFirst){ xs.set(R.top, bFirst, mode === 'item' ? '折算後分數（公式）' : '類別得分（公式）', 3); xs.merge(R.top, bFirst, R.top, bLast, 3); }
   xs.set(R.top, col.total, `${S1.name}\n總分`, 3); xs.merge(R.top, col.total, R.name, col.total, 3);
@@ -713,11 +726,11 @@ function buildClassSheet(sh, cls, opts, xs){
   }
   items.forEach(it => { const rc = rawCol[it.id];
     if (rc){ xs.set(R.name, rc.s, `${it.name}\n分數`, 3); xs.set(R.name, rc.w, `${it.name}\n${rc.info.unit || 'WPM'}`, 3); if (rc.a) xs.set(R.name, rc.a, `${it.name}\n準確度%`, 3); }
-    xs.set(R.name, itemCol[it.id], it.name + (it.bonus ? '（加分）' : rc ? '\n換算得分' : ''), 3); });
+    xs.set(R.name, itemCol[it.id], it.name + (it.bonus ? '（加分）' : rc ? '\n換算得分' : '') + (sh.groups && it.group ? `\n（${GROUP_NAME[it.group]}）` : ''), 3); });
   // block B names
   catsUsed.forEach(cat => { xs.set(R.cat, catCol[cat.id], cat.name, 3); xs.merge(R.cat, catCol[cat.id], R.name, catCol[cat.id], 3); });
   if (col.bonus){ xs.set(R.cat, col.bonus, '加分', 3); xs.merge(R.cat, col.bonus, R.name, col.bonus, 3); }
-  xs.heights[R.name] = 36;
+  xs.heights[R.name] = sh.groups ? 50 : 36;
   // content row
   if (R.content){
     xs.set(R.content, 1, '內容', 10); xs.merge(R.content, 1, R.content, nameCols, 10);
@@ -726,7 +739,8 @@ function buildClassSheet(sh, cls, opts, xs){
     xs.heights[R.content] = 42;
   }
   // full marks + weights rows
-  const catW = cat => mode === 'item' ? nb.filter(it => it.catId === cat.id).reduce((a, it) => a + num(it.weight), 0) : num(cat.weight);
+  const catSum = (cat, g) => nb.filter(it => it.catId === cat.id && (!g || !it.group || it.group === g)).reduce((a, it) => a + num(it.weight), 0);
+  const catW = cat => mode === 'item' ? (sh.groups ? Math.max(...GROUPS.map(g => catSum(cat, g))) : catSum(cat)) : num(cat.weight);
   xs.set(R.full, 1, '滿分', 10); xs.merge(R.full, 1, R.full, nameCols, 10);
   xs.set(R.w, 1, mode === 'item' ? '折算分（加分項：最多加）' : '比重 %（加分項：最多加）', 10); xs.merge(R.w, 1, R.w, nameCols, 10);
   for (let k = nameCols + 1; k <= lastCol; k++){ xs.set(R.full, k, null, 9); xs.set(R.w, k, null, 9); }
@@ -736,13 +750,16 @@ function buildClassSheet(sh, cls, opts, xs){
   xs.set(R.full, col.total, T, 9); xs.set(R.w, col.total, sh.calc.cap ? `上限 ${T}` : '', 9);
   // students
   const totalStyle = d === 0 ? 6 : d === 2 ? 8 : 7;
-  const totalsRef = []; totalsRef.cls = cls; totalsRef.enCol = col.en || null;
+  const totalsRef = []; totalsRef.cls = cls; totalsRef.enCol = col.en || null; totalsRef.col = col;
   const skip = sh.calc.blank !== 'zero';
   const put = v => v === undefined || v === null || v === '' ? null : v;
   cls.students.forEach((st, k) => {
     const row = R.first + k; const sc = {...(cls.scores[st.id] || {})};
+    if (col.cls) xs.set(row, col.cls, st.cls || '', 16);
     xs.set(row, col.no, st.no === '' || st.no === undefined ? null : (Number.isFinite(+st.no) ? +st.no : st.no), 17);
-    xs.set(row, col.zh, st.zh || '', 16); if (col.en) xs.set(row, col.en, st.en || '', 16); if (col.sex) xs.set(row, col.sex, st.sex || '', 17);
+    xs.set(row, col.zh, st.zh || '', 16); if (col.en) xs.set(row, col.en, st.en || '', 16); if (col.sex) xs.set(row, col.sex, st.sex || '', 17); if (col.grp) xs.set(row, col.grp, st.group || '', 17);
+    const G = col.grp ? `$${colName(col.grp)}${row}` : null;
+    const other = it => sh.groups && it.group && st.group && it.group !== st.group;
     const X = it => `${colName(itemCol[it.id])}${row}`;
     const fullRef = it => `${colName(itemCol[it.id])}$${R.full}`, wRef = it => `${colName(itemCol[it.id])}$${R.w}`;
     const filled = [];
@@ -756,29 +773,31 @@ function buildClassSheet(sh, cls, opts, xs){
         xs.set(row, itemCol[it.id], cv, 13, tyCurveFormula(rc.info.rule, S0, W0, A0));
         if (cv === '') delete sc[it.id]; else sc[it.id] = cv;
         filled.push(S0, W0);
-      } else { xs.set(row, itemCol[it.id], put(sc[it.id]), 17); filled.push(X(it)); }
+      } else { xs.set(row, itemCol[it.id], other(it) ? null : put(sc[it.id]), other(it) ? 19 : 17); filled.push(X(it)); }
     });
-    const res = computeStudent(sh, sc);
+    const res = computeStudent(sh, sc, st.group);
     const cnt = `COUNTA(${filled.join(',')})`;
-    const cond = it => skip ? `AND(${X(it)}<>"免",${X(it)}<>"")` : `${X(it)}<>"免"`;
+    const ap = it => sh.groups && it.group && G ? `OR(${G}="${it.group}",AND(${G}="",${X(it)}<>""))` : null;
+    const cond = it => { const base = skip ? `AND(${X(it)}<>"免",${X(it)}<>"")` : `${X(it)}<>"免"`; return ap(it) ? `AND(${ap(it)},${base})` : base; };
+    const onlyIf = (it, e) => ap(it) ? `IF(${ap(it)},${e},0)` : e;
     // block B
     const catRefs = catsUsed.map(cat => {
       const its = nb.filter(it => it.catId === cat.id); const c0 = catCol[cat.id]; const wr = `${colName(c0)}$${R.w}`;
       let f, v;
       if (mode === 'item'){
-        f = `IF(${cnt}=0,"",${its.map(it => `N(${X(it)})/${fullRef(it)}*${wRef(it)}`).join('+')})`;
-        v = res.empty ? '' : its.reduce((a, it) => { const s0 = itemState(sh, sc[it.id]); return a + (s0.inc && s0.n ? s0.n / num(it.full) * num(it.weight) : 0); }, 0);
+        f = `IF(${cnt}=0,"",${its.map(it => onlyIf(it, `N(${X(it)})/${fullRef(it)}*${wRef(it)}`)).join('+')})`;
+        v = res.empty ? '' : its.filter(it => applies(sh, it, st.group, sc)).reduce((a, it) => { const s0 = itemState(sh, sc[it.id]); return a + (s0.inc && s0.n ? s0.n / num(it.full) * num(it.weight) : 0); }, 0);
       } else {
         f = sh.calc.catMethod === 'avg'
           ? `IF(${cnt}=0,"",IF((${its.map(it => `IF(${cond(it)},1,0)`).join('+')})=0,"免",(${its.map(it => `IF(${cond(it)},N(${X(it)})/${fullRef(it)},0)`).join('+')})/(${its.map(it => `IF(${cond(it)},1,0)`).join('+')})*${wr}))`
-          : `IF(${cnt}=0,"",IF((${its.map(it => `IF(${cond(it)},${fullRef(it)},0)`).join('+')})=0,"免",(${its.map(it => `N(${X(it)})`).join('+')})/(${its.map(it => `IF(${cond(it)},${fullRef(it)},0)`).join('+')})*${wr}))`;
+          : `IF(${cnt}=0,"",IF((${its.map(it => `IF(${cond(it)},${fullRef(it)},0)`).join('+')})=0,"免",(${its.map(it => onlyIf(it, `N(${X(it)})`)).join('+')})/(${its.map(it => `IF(${cond(it)},${fullRef(it)},0)`).join('+')})*${wr}))`;
         v = res.empty ? '' : (res.cats[cat.id] === null || res.cats[cat.id] === undefined ? '免' : res.cats[cat.id]);
       }
       xs.set(row, c0, v, 13, f);
       return `${colName(c0)}${row}`;
     });
     let bonusRef = null;
-    if (col.bonus){ bonusRef = `${colName(col.bonus)}${row}`; xs.set(row, col.bonus, res.empty ? '' : res.bonus, 13, `IF(${cnt}=0,"",${bonusItems.map(it => `N(${X(it)})/${fullRef(it)}*${wRef(it)}`).join('+')})`); }
+    if (col.bonus){ bonusRef = `${colName(col.bonus)}${row}`; xs.set(row, col.bonus, res.empty ? '' : res.bonus, 13, `IF(${cnt}=0,"",${bonusItems.map(it => onlyIf(it, `N(${X(it)})/${fullRef(it)}*${wRef(it)}`)).join('+')})`); }
     let numE = null, denE = null;
     if (catRefs.length){
       numE = catRefs.map(x => `N(${x})`).join('+');
@@ -805,6 +824,7 @@ function buildClassSheet(sh, cls, opts, xs){
         xs.validations.push({sqref: `${a1}:${cn}${last}`, f: `OR(AND(ISNUMBER(${a1}),${a1}>=0,${a1}<=${cn}$${R.full}),${a1}="缺",${a1}="免")`, msg: '請輸入 0 至滿分之間的數字，或「缺」（缺交，當 0 分）、「免」（豁免，不計入）。'}); }
     });
   }
+  if (col.grp && cls.students.length){ const a1 = `${colName(col.grp)}${R.first}`; xs.validations.push({sqref: `${a1}:${colName(col.grp)}${last}`, f: `OR(${a1}="上",${a1}="下",${a1}="")`, msg: '組別請填「上」或「下」。'}); }
   xs.protect = !!opts.protect;
   // average row: every score / formula column
   const avgRow = last + 2;
@@ -817,7 +837,7 @@ function buildClassSheet(sh, cls, opts, xs){
     }
   }
   // widths
-  xs.widths[col.no] = 5; xs.widths[col.zh] = 10; if (col.en) xs.widths[col.en] = 20; if (col.sex) xs.widths[col.sex] = 5;
+  if (col.cls) xs.widths[col.cls] = 5; xs.widths[col.no] = 5; xs.widths[col.zh] = 10; if (col.en) xs.widths[col.en] = 20; if (col.sex) xs.widths[col.sex] = 5; if (col.grp) xs.widths[col.grp] = 5;
   items.forEach(it => { xs.widths[itemCol[it.id]] = Math.max(7, Math.min(12, it.name.length * 1.6 + 2)); const rc = rawCol[it.id]; if (rc){ [rc.s, rc.w, rc.a].filter(Boolean).forEach(cc => xs.widths[cc] = 7); } });
   catsUsed.forEach(cat => xs.widths[catCol[cat.id]] = Math.max(7, Math.min(10, cat.name.length * 1.8 + 2)));
   if (col.bonus) xs.widths[col.bonus] = 6;
@@ -852,15 +872,15 @@ function exportMarksheet(sh, classIds, opts){
   if (opts.summary && summary.length){
     const xs = new XSheet(safeSheetName('總分表', used));
     xs.set(1, 1, `${S.settings.school || ''} ${sh.year} ${SUBJ[sh.subject].full} ${sh.term} 總分表`.trim(), 1);
-    ['班別','班號','中文姓名','英文姓名',`總分（${num(sh.calc.total)}）`].forEach((h, k) => xs.set(3, k+1, h, 3));
+    ['班別', isElective(sh) ? '學號' : '班號','中文姓名','英文姓名',`總分（${num(sh.calc.total)}）`].forEach((h, k) => xs.set(3, k+1, h, 3));
     let r = 4;
     for (const {cls, xs: cs, refs} of summary){
       for (const ref of refs){
         if (ref.st.ph && !opts.blank) continue;
         const st = ref.st; const q = qSheet(cs.name); const pick = (cn, v) => xs.set(r, cn.k, v, cn.s, `IF(${q}!${colName(cn.c)}${ref.row}="","",${q}!${colName(cn.c)}${ref.row})`);
-        xs.set(r, 1, refs.cls.name, 4);
-        pick({k:2, c:1, s:5}, Number.isFinite(+st.no) && st.no !== '' ? +st.no : (st.no || ''));
-        pick({k:3, c:2, s:4}, st.zh || '');
+        if (refs.col.cls) pick({k:1, c:refs.col.cls, s:4}, st.cls || ''); else xs.set(r, 1, refs.cls.name, 4);
+        pick({k:2, c:refs.col.no, s:5}, Number.isFinite(+st.no) && st.no !== '' ? +st.no : (st.no || ''));
+        pick({k:3, c:refs.col.zh, s:4}, st.zh || '');
         if (refs.enCol) pick({k:4, c:refs.enCol, s:4}, st.en || ''); else xs.set(r, 4, st.en || '', 4);
         const d = +sh.calc.decimals;
         xs.set(r, 5, ref.value === null ? '' : ref.value, d === 0 ? 6 : d === 2 ? 8 : 7, `IF(${q}!${ref.ref}="","",${q}!${ref.ref})`);
@@ -1001,14 +1021,38 @@ function rosterFromPaste(text){
   return grid.map((row, k) => { const s = String(row.find(v => v !== '' && v !== undefined) ?? '').trim(); return {no: k + 1, zh: CJK.test(s) ? s : '', en: CJK.test(s) ? '' : s, sex:''}; }).filter(s => s.zh || s.en);
 }
 function guessClassName(sheetName){ const m = /([1-6])\s*([A-Za-z])/.exec(sheetName); return m ? m[1] + m[2].toUpperCase() : sheetName.trim(); }
+function isElective(sh){ return sh.elective ?? sh.subject === 'ict'; }
+const GL = sh => isElective(sh) ? '組別' : '班別';
+function stuSort(sh){ return (a, b) => isElective(sh) ? (String(a.cls || '').localeCompare(String(b.cls || '')) || (+a.no || 999) - (+b.no || 999)) : ((+a.no || 999) - (+b.no || 999)); }
+/* elective list: students from many classes — read 班別 / 學號 / 姓名 by header (or by content), all into one group */
+function electiveRoster(sheets){
+  const raw = tyBuildRaw(sheets); if (!raw.rows.length) return [];
+  const m = tyAutoMap(raw); const H = raw.header;
+  const find = rx => H.findIndex(h => rx.test(String(h)));
+  let zh = find(/中文/), en = find(/英文|english/i), sex = find(/性別|sex|gender/i);
+  const cols = raw.header.map((_, i) => raw.rows.map(r => r[i]).filter(v => v !== '' && v !== undefined && v !== null));
+  const used = new Set([m.cls, m.no, m.score, m.wpm, m.acc].filter(x => x !== undefined));
+  if (zh < 0) zh = cols.findIndex((vals, i) => !used.has(i) && vals.length && vals.filter(v => CJK.test(String(v)) && !/^(男|女)$/.test(String(v))).length / vals.length > .6);
+  if (en < 0) en = cols.findIndex((vals, i) => !used.has(i) && i !== zh && vals.length && vals.filter(v => /^[A-Za-z][A-Za-z ,.'()-]{2,}$/.test(String(v))).length / vals.length > .6);
+  if (sex < 0) sex = cols.findIndex((vals, i) => !used.has(i) && vals.length && vals.every(v => SEXV.test(String(v).trim())));
+  return raw.rows.map(r => {
+    const sv = sex >= 0 ? String(r[sex] ?? '').trim() : '';
+    const cl = m.cls !== undefined ? String(r[m.cls] ?? '').trim() : '';
+    const no = m.no !== undefined ? tyNum(r[m.no]) : null;
+    return {cls: raw.multi && m.cls === 0 ? guessClassName(cl) : cl.toUpperCase().replace(/^F\.?/, ''), no: no ?? '', zh: zh >= 0 ? String(r[zh] ?? '').trim() : '', en: en >= 0 ? String(r[en] ?? '').trim() : '', sex: /^(F|f|女)$/.test(sv) ? 'F' : /^(M|m|男)$/.test(sv) ? 'M' : ''};
+  }).filter(s0 => (s0.zh || s0.en) && (s0.cls || s0.no !== ''));
+}
 function applyRoster(sh, name, students){
   let cls = sh.classes.find(c => c.name.trim().toLowerCase() === name.trim().toLowerCase());
   if (!cls){ cls = {id: uid('k'), name: name.trim(), students: [], scores: {}}; sh.classes.push(cls); }
   const old = cls.students; const next = [];
   for (const s of students){
-    const match = old.find(o => String(o.no) === String(s.no) && (o.zh === s.zh || o.en === s.en || (!o.zh && !o.en))) || old.find(o => s.zh && o.zh === s.zh);
-    next.push({id: match ? match.id : uid('s'), no: s.no, zh: s.zh, en: s.en, sex: s.sex});
+    const match = old.find(o => String(o.cls || '') === String(s.cls || '') && String(o.no) === String(s.no) && (o.zh === s.zh || o.en === s.en || (!o.zh && !o.en))) || old.find(o => s.zh && o.zh === s.zh);
+    const ns = {id: match ? match.id : uid('s'), no: s.no, zh: s.zh, en: s.en, sex: s.sex};
+    if (s.cls) ns.cls = s.cls; const g = s.group || (match && match.group); if (g) ns.group = g;
+    next.push(ns);
   }
+  if (isElective(sh)) next.sort(stuSort(sh));
   const keep = new Set(next.map(s => s.id));
   for (const k of Object.keys(cls.scores)) if (!keep.has(k)) delete cls.scores[k];
   cls.students = next;
@@ -1028,10 +1072,10 @@ function formulaHTML(sh){
   const bonusHTML = bonus.length ? ' <span class="op">＋</span> ' + bonus.map(it => `<span class="term bonus">${esc(it.name)} <span class="op">÷</span> ${fmtN(num(it.full))} <span class="op">×</span> ${fmtN(num(it.weight))}</span>`).join(' <span class="op">＋</span> ') : '';
   if (sh.calc.mode === 'item'){
     const nb = items.filter(i => !i.bonus); if (!nb.length) return '<span class="muted">先在「② 評核項目」加入項目。</span>';
-    const W = sumWeights(sh);
-    const sumPart = nb.map(it => `<span class="term">${term(it)}</span>`).join(' <span class="op">＋</span> ');
+    const W = sumWeights(sh, sh.groups ? '上' : undefined);
+    const sumPart = nb.map(it => `<span class="term">${term(it)}${sh.groups && it.group ? `<span class="muted">（${GROUP_NAME[it.group]}）</span>` : ''}</span>`).join(' <span class="op">＋</span> ');
     const scale = Math.abs(W - T) < 1e-9 ? '' : ` <span class="op">÷</span> ${fmtN(W)} <span class="op">×</span> ${T}`;
-    return `<b>學期總分</b> <span class="op">＝</span> （${sumPart}）${scale}${bonusHTML}<br><span class="muted">${tail.slice(1)}</span>`;
+    return `<b>學期總分</b> <span class="op">＝</span> （${sumPart}）${scale}${bonusHTML}<br><span class="muted">${tail.slice(1)}${sh.groups && nb.some(i => i.group) ? '；每位學生只計自己組別（上半班／下半班）的項目' : ''}</span>`;
   }
   const lines = [];
   const used = sh.categories.filter(cat => items.some(i => !i.bonus && i.catId === cat.id));
@@ -1068,7 +1112,7 @@ function renderSide(){
     <nav class="sheet-list" aria-label="分紙">
       ${groups.map(g => `<div class="sheet-group"><h4><i class="dot" style="background:${SUBJ[g.k].color}"></i>${SUBJ[g.k].name}</h4>
         ${g.list.map(s => `<button class="sheet-btn" data-act="openSheet" data-id="${s.id}" aria-current="${s.id === S.curId}">
-          <b>${esc(sheetTitle(s))} · ${esc(s.term)}</b><small>${esc(s.year)} · ${s.classes.length} 班 · ${s.classes.reduce((a,c) => a + c.students.length, 0)} 人</small></button>`).join('')}
+          <b>${esc(sheetTitle(s))} · ${esc(s.term)}</b><small>${esc(s.year)} · ${s.classes.length} ${isElective(s) ? '組' : '班'} · ${s.classes.reduce((a,c) => a + c.students.length, 0)} 人</small></button>`).join('')}
       </div>`).join('')}
     </nav>
     <div class="field" style="margin-top:auto">
@@ -1096,7 +1140,7 @@ function renderMain(){
       <div>
         <span class="subj-tag" style="color:${subj.color}">${subj.name}・${esc(subj.full)}</span>
         <h1 style="margin-top:6px">${esc(sheetTitle(sh))}　${esc(sh.term)}</h1>
-        <div class="meta"><span>${esc(sh.year)} 學年</span><span>任教老師：${esc(sh.teacher || '—')}</span><span>${sh.classes.length} 班・${nStu} 人</span><span>${sh.items.length} 個評核項目</span></div>
+        <div class="meta"><span>${esc(sh.year)} 學年</span><span>任教老師：${esc(sh.teacher || '—')}</span><span>${sh.classes.length} ${isElective(sh) ? '組' : '班'}・${nStu} 人</span><span>${sh.items.length} 個評核項目</span></div>
       </div>
       <div class="row"><button class="btn sm" data-act="editSheet">修改資料</button><button class="btn sm" data-act="dupSheet">複製成新分紙</button><button class="btn sm danger" data-act="delSheet">刪除</button></div>
     </header>
@@ -1122,42 +1166,44 @@ function rosterTab(sh){
   const pv = S.importPreview;
   return `
   <section class="card">
-    <div class="card-head"><h3>班別及學生</h3>
-      <div class="row"><input class="inp" id="newClassName" placeholder="新班別，例如 3A" style="width:150px"><button class="btn sm" data-act="addClass">新增班別</button></div></div>
-    ${sh.classes.length ? classChips(sh) : '<p class="hint">還未有班別。用下面的匯入功能，或在右上角新增班別。</p>'}
+    <div class="card-head"><h3>${GL(sh)}及學生</h3>
+      <div class="row"><input class="inp" id="newClassName" placeholder="${isElective(sh) ? '新組別，例如 4X ICT' : '新班別，例如 3A'}" style="width:150px"><button class="btn sm" data-act="addClass">新增${GL(sh)}</button></div></div>
+    <label class="check"><input type="checkbox" data-f="elective" ${isElective(sh) ? 'checked' : ''}> 選修科：學生來自不同班別，不按班別分開，名單列出班別及學號</label>
+    ${sh.classes.length ? classChips(sh) : `<p class="hint">還未有${GL(sh)}。用下面的匯入功能，或在右上角新增${GL(sh)}。</p>`}
     ${cls ? `
       <div class="row" style="justify-content:space-between">
-        <div class="row"><label class="lbl" for="clsName">班別名稱</label><input class="inp" id="clsName" data-f="className" value="${esc(cls.name)}" style="width:110px"></div>
-        <div class="row"><button class="btn sm" data-act="addStudent">＋ 加一位學生</button><button class="btn sm" data-act="sortStudents">按班號排序</button><button class="btn sm danger" data-act="delClass">刪除此班</button></div>
+        <div class="row"><label class="lbl" for="clsName">${GL(sh)}名稱</label><input class="inp" id="clsName" data-f="className" value="${esc(cls.name)}" style="width:110px"></div>
+        <div class="row"><button class="btn sm" data-act="addStudent">＋ 加一位學生</button><button class="btn sm" data-act="sortStudents">${isElective(sh) ? '按班別及學號排序' : '按班號排序'}</button>${sh.groups ? `<button class="btn sm" data-act="splitHalf">按班號平分上下半班</button><span class="pill">${GROUPS.map(g => `${GROUP_NAME[g]} ${cls.students.filter(x => x.group === g).length}`).join('・')}${cls.students.some(x => !x.group) ? `・未分 ${cls.students.filter(x => !x.group).length}` : ''}</span>` : ''}<button class="btn sm danger" data-act="delClass">刪除此${isElective(sh) ? '組' : '班'}</button></div>
       </div>
-      <div class="tbl-wrap"><table class="tbl"><thead><tr><th class="w-no">班號</th><th>中文姓名</th><th>英文姓名</th><th class="w-no">性別</th><th class="w-act"></th></tr></thead><tbody>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr>${isElective(sh) ? '<th class="w-no">班別</th><th class="w-no">學號</th>' : '<th class="w-no">班號</th>'}<th>中文姓名</th><th>英文姓名</th><th class="w-no">性別</th>${sh.groups ? '<th class="w-no">組別</th>' : ''}<th class="w-act"></th></tr></thead><tbody>
         ${cls.students.map(st => `<tr data-sid="${st.id}">
-          <td><input class="inp num" data-f="stu" data-k="no" value="${esc(st.no)}" aria-label="班號"></td>
+          ${isElective(sh) ? `<td><input class="inp" data-f="stu" data-k="cls" value="${esc(st.cls || '')}" aria-label="班別" style="width:70px"></td>` : ''}<td><input class="inp num" data-f="stu" data-k="no" value="${esc(st.no)}" aria-label="${isElective(sh) ? '學號' : '班號'}"></td>
           <td><input class="inp" data-f="stu" data-k="zh" value="${esc(st.zh)}" aria-label="中文姓名"></td>
           <td><input class="inp" data-f="stu" data-k="en" value="${esc(st.en)}" aria-label="英文姓名"></td>
           <td><select class="inp" data-f="stu" data-k="sex" aria-label="性別"><option value=""${!st.sex?' selected':''}>—</option><option value="M"${st.sex==='M'?' selected':''}>M</option><option value="F"${st.sex==='F'?' selected':''}>F</option></select></td>
-          <td class="w-act"><button class="btn icon ghost" data-act="delStudent" data-id="${st.id}" aria-label="刪除學生">✕</button></td></tr>`).join('') || `<tr><td colspan="5" class="muted">這班還沒有學生。</td></tr>`}
+          ${sh.groups ? `<td><select class="inp" data-f="stu" data-k="group" aria-label="組別"><option value=""${!st.group ? ' selected' : ''}>—</option>${GROUPS.map(g => `<option value="${g}"${st.group === g ? ' selected' : ''}>${GROUP_NAME[g]}</option>`).join('')}</select></td>` : ''}
+          <td class="w-act"><button class="btn icon ghost" data-act="delStudent" data-id="${st.id}" aria-label="刪除學生">✕</button></td></tr>`).join('') || `<tr><td colspan="${5 + (sh.groups ? 1 : 0) + (isElective(sh) ? 1 : 0)}" class="muted">還沒有學生。</td></tr>`}
       </tbody></table></div>` : ''}
   </section>
   <section class="card">
     <h3>匯入學生名單</h3>
     <p class="hint">同一班再次匯入會更新名單；按班號對應的學生，已輸入的分數會保留。</p>
     ${pv ? `<div class="preview">
-        <div class="row" style="justify-content:space-between"><b>找到 ${pv.length} 班，請確認班別名稱</b><span class="muted" style="font-size:12.5px">${esc(pv.source || '')}</span></div>
+        <div class="row" style="justify-content:space-between"><b>找到 ${pv.length} ${isElective(sh) ? '組' : '班'}，請確認${GL(sh)}名稱</b><span class="muted" style="font-size:12.5px">${esc(pv.source || '')}</span></div>
         ${pv.map((p, k) => `<div class="prev-row">
           <input type="checkbox" data-f="pvInc" data-k="${k}" ${p.include ? 'checked' : ''} aria-label="匯入 ${esc(p.name)}" style="accent-color:var(--accent);width:16px;height:16px">
-          <input class="inp" data-f="pvName" data-k="${k}" value="${esc(p.name)}" aria-label="班別名稱">
-          <span class="pill ${sh.classes.some(c => c.name.toLowerCase() === p.name.toLowerCase()) ? 'warn' : 'ok'}">${p.students.length} 人${sh.classes.some(c => c.name.toLowerCase() === p.name.toLowerCase()) ? '・更新現有班' : '・新班'}</span>
-          <small>${p.students.slice(0, 5).map(s => esc(`${s.no} ${s.zh || s.en}`)).join('、')}${p.students.length > 5 ? '……' : ''}</small></div>`).join('')}
+          <input class="inp" data-f="pvName" data-k="${k}" value="${esc(p.name)}" aria-label="${GL(sh)}名稱">
+          <span class="pill ${sh.classes.some(c => c.name.toLowerCase() === p.name.toLowerCase()) ? 'warn' : 'ok'}">${p.students.length} 人${sh.classes.some(c => c.name.toLowerCase() === p.name.toLowerCase()) ? (isElective(sh) ? '・更新現有組' : '・更新現有班') : (isElective(sh) ? '・新組' : '・新班')}</span>
+          <small>${p.students.slice(0, 5).map(s => esc(`${s.cls ? s.cls + ' ' : ''}${s.no} ${s.zh || s.en}`)).join('、')}${p.students.length > 5 ? '……' : ''}${p.students.some(s => s.cls) ? `（來自 ${[...new Set(p.students.map(s => s.cls).filter(Boolean))].sort().join('、')}）` : ''}</small></div>`).join('')}
         <div class="row"><button class="btn primary" data-act="applyImport">匯入所選班別</button><button class="btn" data-act="cancelImport">取消</button></div>
       </div>` : ''}
     <div class="grid3">
       <div class="sub"><h4>從 Excel / CSV 檔</h4>
-        <label class="drop" id="drop"><input type="file" id="rosterFile" accept=".xlsx,.xlsm,.csv,.txt"><span><b>選擇檔案</b> 或拖放到這裏</span><span class="muted" style="font-size:12px">可直接用舊分紙：每個工作表當一班，自動找出班號、姓名、性別</span></label>
+        <label class="drop" id="drop"><input type="file" id="rosterFile" accept=".xlsx,.xlsm,.csv,.txt"><span><b>選擇檔案</b> 或拖放到這裏</span><span class="muted" style="font-size:12px">${isElective(sh) ? '選修名單：需要「班別」、「學號」、「姓名」欄，全部學生放入同一組' : '可直接用舊分紙：每個工作表當一班，自動找出班號、姓名、性別'}</span></label>
       </div>
       <div class="sub"><h4>貼上名單</h4>
-        <textarea class="inp" id="pasteBox" placeholder="從 Excel 複製「班號、姓名」等欄位貼上，例如：&#10;1	陳大文	CHAN TAI MAN	M&#10;2	李小晴	LEE SIU CHING	F"></textarea>
-        <div class="row"><input class="inp" id="pasteClass" placeholder="班別" value="${esc(cls ? cls.name : '')}" style="width:100px"><button class="btn sm" data-act="pasteImport">讀取名單</button></div>
+        <textarea class="inp" id="pasteBox" placeholder="${isElective(sh) ? '從 Excel 複製（連標題行）貼上，例如：&#10;班別	學號	中文姓名	英文姓名&#10;4A	3	陳大文	CHAN TAI MAN&#10;4C	17	李小晴	LEE SIU CHING' : '從 Excel 複製「班號、姓名」等欄位貼上，例如：&#10;1	陳大文	CHAN TAI MAN	M&#10;2	李小晴	LEE SIU CHING	F'}"></textarea>
+        <div class="row"><input class="inp" id="pasteClass" placeholder="${GL(sh)}" value="${esc(cls ? cls.name : '')}" style="width:100px"><button class="btn sm" data-act="pasteImport">讀取名單</button></div>
       </div>
       <div class="sub"><h4>從其他分紙複製</h4>
         ${others.length ? `<select class="inp" id="copyFrom">${others.map(o => `<option value="${o.id}">${esc(sheetTitle(o))} ${esc(o.term)}（${esc(o.year)}）</option>`).join('')}</select>
@@ -1177,6 +1223,13 @@ function bindDrop(){
 async function handleRosterFile(file){
   try {
     let found = [];
+    if (isElective(cur())){
+      const sheets = /\.(csv|txt)$/i.test(file.name) ? [{name: file.name.replace(/\.[^.]+$/, ''), grid: parseDelimited(await file.text())}] : await readXlsx(await file.arrayBuffer());
+      const st = electiveRoster(sheets.filter(s0 => s0.grid.some(r => r && r.length)));
+      if (!st.length){ toast('找不到名單：請確認有「班別」、「學號」及「姓名」欄'); return; }
+      const c0 = curClass(cur());
+      S.importPreview = [{name: c0 ? c0.name : `${FORM_ZH[cur().form] || ''} ${SUBJ[cur().subject].name}`.trim(), students: st, include: true}]; S.importPreview.source = file.name; renderTab(); return;
+    }
     if (/\.(csv|txt)$/i.test(file.name)){
       const det = detectRoster(parseDelimited(await file.text()));
       if (det) found.push({name: guessClassName(file.name.replace(/\.[^.]+$/, '')), students: det.students, include: true});
@@ -1208,18 +1261,20 @@ function itemsTab(sh){
   </section>
   <section class="card">
     <div class="card-head"><h3>評核項目</h3>
-      <div class="sumline">${modeItem ? `<span>折算分合計 <b>${fmtN(W)}</b></span><span>→ 縮放至學期總分 <b>${num(sh.calc.total)}</b></span>` : `<span>按類別比重計分，比重在「③ 計分方式」設定</span>`}</div></div>
+      <div class="sumline">${modeItem ? (sh.groups ? GROUPS.map(g => `<span>${GROUP_NAME[g]}折算分合計 <b>${fmtN(sumWeights(sh, g))}</b></span>`).join('') + (Math.abs(sumWeights(sh, '上') - sumWeights(sh, '下')) > 1e-9 ? '<span class="pill warn">兩組合計不同，會各自按比例換算</span>' : '') : `<span>折算分合計 <b>${fmtN(W)}</b></span>`) + `<span>→ 縮放至學期總分 <b>${num(sh.calc.total)}</b></span>` : `<span>按類別比重計分，比重在「③ 計分方式」設定</span>`}</div></div>
+    <label class="check"><input type="checkbox" data-f="groups" ${sh.groups ? 'checked' : ''}> 分上下半班上課（上半班、下半班可以做不同的項目，例如不同的設計習作及製作習作）</label>
     <p class="hint">${modeItem ? '「折算分」是該項目在總分中的份量：滿分 40 的習作若折算 25，即學生得 36/40 會計 22.5。折算分與滿分相同即照計原分。' : '按類別比重時，同一類別內的項目會先合併（按滿分比例），再乘該類別的比重。'}「加分項」不計入滿分，只會加分（例如繪圖 bonus）。</p>
     ${sh.categories.length ? `<div class="tbl-wrap"><table class="tbl">
-      <thead><tr><th>項目名稱</th><th>內容 / 描述</th><th class="w-num">日期</th><th class="w-num">滿分</th><th class="w-num">${modeItem ? '折算分' : '加分上限'}</th><th class="w-no">加分項</th><th class="w-act"></th></tr></thead>
+      <thead><tr><th>項目名稱</th><th>內容 / 描述</th><th class="w-num">日期</th>${sh.groups ? '<th class="w-num">適用</th>' : ''}<th class="w-num">滿分</th><th class="w-num">${modeItem ? '折算分' : '加分上限'}</th><th class="w-no">加分項</th><th class="w-act"></th></tr></thead>
       <tbody>${sh.categories.map((cat, k) => {
         const its = items.filter(i => i.catId === cat.id);
         const sub = its.filter(i => !i.bonus).reduce((a,i) => a + num(i.weight), 0);
-        return `<tr class="cat-band"><td colspan="7" class="c${k % 8}"><div class="row" style="justify-content:space-between"><span>${esc(cat.name)} <span class="muted" style="font-weight:400">・${its.length} 項${modeItem ? `・折算 ${fmtN(sub)}` : `・比重 ${fmtN(num(cat.weight))}%`}</span></span><button class="btn sm" data-act="itemAdd" data-cat="${cat.id}">＋ 在「${esc(cat.name)}」加項目</button></div></td></tr>` +
+        return `<tr class="cat-band"><td colspan="${sh.groups ? 8 : 7}" class="c${k % 8}"><div class="row" style="justify-content:space-between"><span>${esc(cat.name)} <span class="muted" style="font-weight:400">・${its.length} 項${modeItem ? (sh.groups && its.some(i => i.group) ? `・折算 ${GROUPS.map(g => `${g} ${fmtN(its.filter(i => !i.bonus && (!i.group || i.group === g)).reduce((a, i) => a + num(i.weight), 0))}`).join('／')}` : `・折算 ${fmtN(sub)}`) : `・比重 ${fmtN(num(cat.weight))}%`}</span></span><button class="btn sm" data-act="itemAdd" data-cat="${cat.id}">＋ 在「${esc(cat.name)}」加項目</button></div></td></tr>` +
           its.map(it => `<tr data-iid="${it.id}">
             <td><input class="inp" data-f="item" data-k="name" value="${esc(it.name)}" aria-label="項目名稱"></td>
             <td><input class="inp" data-f="item" data-k="content" value="${esc(it.content)}" placeholder="例如：第一章 習作 1-10 題" aria-label="內容"></td>
             <td><input class="inp" data-f="item" data-k="date" value="${esc(it.date)}" placeholder="10/9" aria-label="日期"></td>
+            ${sh.groups ? `<td><select class="inp" data-f="item" data-k="group" aria-label="適用組別" style="width:auto">${[['','全班'],['上','上半班'],['下','下半班']].map(([v, l]) => `<option value="${v}"${(it.group || '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select></td>` : ''}
             <td><input class="inp num" data-f="item" data-k="full" value="${fmtN(num(it.full))}" inputmode="decimal" aria-label="滿分"></td>
             <td>${(modeItem || it.bonus) ? `<input class="inp num" data-f="item" data-k="weight" value="${fmtN(num(it.weight))}" inputmode="decimal" aria-label="${it.bonus ? '加分上限' : '折算分'}">` : '<span class="muted">—</span>'}</td>
             <td style="text-align:center"><input type="checkbox" data-f="item" data-k="bonus" ${it.bonus ? 'checked' : ''} aria-label="加分項" style="accent-color:var(--accent);width:16px;height:16px"></td>
@@ -1264,7 +1319,7 @@ function calcTab(sh){
   </section>` : ''}`;
 }
 function workedExample(sh, cls, st){
-  const sc = cls.scores[st.id] || {}; const items = orderedItems(sh); const res = computeStudent(sh, sc); const c = sh.calc; const T = num(c.total);
+  const sc = cls.scores[st.id] || {}; const items = orderedItems(sh); const res = computeStudent(sh, sc, st.group); const c = sh.calc; const T = num(c.total);
   const rows = items.map(it => {
     const v = sc[it.id]; const s = itemState(sh, v);
     let contrib = '—';
@@ -1283,35 +1338,42 @@ function workedExample(sh, cls, st){
 }
 
 /* ---- tab 4 scores ---- */
+function gridView(sh, cls){
+  const g = sh.groups ? (S.grpView || '') : '';
+  const items = orderedItems(sh).filter(it => !g || !it.group || it.group === g);
+  const studs = cls.students.filter(st => !g || st.group === g || !st.group);
+  const catsUsed = sh.calc.mode === 'category' ? sh.categories.filter(cat => items.some(i => !i.bonus && i.catId === cat.id)) : [];
+  return {g, items, studs, catsUsed};
+}
 function scoresTab(sh){
   const cls = curClass(sh);
   if (!sh.classes.length) return `<section class="card"><h3>輸入分數</h3><p class="hint">先在「① 學生名單」加入班別和學生。</p><div><button class="btn" data-act="tab" data-tab="roster">前往學生名單</button></div></section>`;
   if (!sh.items.length) return `<section class="card"><h3>輸入分數</h3><p class="hint">先在「② 評核項目」加入項目。</p><div><button class="btn" data-act="tab" data-tab="items">前往評核項目</button></div></section>`;
-  const items = orderedItems(sh); const c = sh.calc; const T = num(c.total);
-  const catsUsed = c.mode === 'category' ? sh.categories.filter(cat => items.some(i => !i.bonus && i.catId === cat.id)) : [];
+  const {items, studs, catsUsed, g: gv} = gridView(sh, cls); const c = sh.calc; const T = num(c.total);
   // category spans
   const spans = []; let i = 0;
   while (i < items.length){ const cid = items[i].catId; let j = i; while (j + 1 < items.length && items[j+1].catId === cid) j++; spans.push({cat: sh.categories.find(x => x.id === cid), n: items.slice(i, j + 1).reduce((a, it) => a + (rawOf(sh, it) ? 3 : 1), 0)}); i = j + 1; }
-  const head1 = `<tr><th class="stick1" rowspan="3">班號</th><th class="stick2" rowspan="3" style="text-align:left">姓名</th>
+  const head1 = `<tr><th class="stick1" rowspan="3">${isElective(sh) ? '班別<br>學號' : '班號'}</th><th class="stick2" rowspan="3" style="text-align:left">姓名</th>
     ${spans.map(s => `<th colspan="${s.n}" class="c${catIndex(sh, s.cat?.id)}">${esc(s.cat ? s.cat.name : '')}</th>`).join('')}
     ${catsUsed.length ? `<th colspan="${catsUsed.length}">類別得分</th>` : ''}<th class="tot" rowspan="3">總分<br><span class="num" style="font-weight:400;font-size:11.5px">/ ${T}</span></th></tr>`;
   const head2 = `<tr>${items.map(it => `${rawOf(sh, it) ? `<th class="c${catIndex(sh, it.catId)} rawh"><span class="iname">分數</span></th><th class="c${catIndex(sh, it.catId)} rawh"><span class="iname">${esc(rawOf(sh, it).unit || 'WPM')}</span></th>` : ''}<th class="c${catIndex(sh, it.catId)}" title="${esc([it.content, it.date].filter(Boolean).join('｜'))}"><span class="iname">${esc(it.name)}${it.bonus ? ' <span class="pill">加分</span>' : ''}${rawOf(sh, it) ? '<br>換算得分' : ''}</span></th>`).join('')}
     ${catsUsed.map(cat => `<th><span class="iname">${esc(cat.name)}</span></th>`).join('')}</tr>`;
   const head3 = `<tr>${items.map(it => `${rawOf(sh, it) ? '<th class="rawh"><span class="ifull">原始</span></th><th class="rawh"><span class="ifull">原始</span></th>' : ''}<th><span class="ifull">/${fmtN(num(it.full))}${c.mode === 'item' && !it.bonus && num(it.weight) !== num(it.full) ? `→${fmtN(num(it.weight))}` : ''}${it.bonus ? `→+${fmtN(num(it.weight))}` : ''}<button class="btn" data-act="colTools" data-id="${it.id}" aria-label="${esc(it.name)} 整欄工具" title="整欄工具">⋯</button></span></th>`).join('')}
     ${catsUsed.map(cat => `<th><span class="ifull">${fmtN(num(cat.weight))}%</span></th>`).join('')}</tr>`;
-  const body = cls.students.map((st, r) => {
-    const sc = cls.scores[st.id] || {}; const res = computeStudent(sh, sc);
-    return `<tr data-sid="${st.id}"><td class="no stick1">${esc(st.no)}</td><td class="nm stick2">${esc(st.zh || st.en)}${st.zh && st.en ? `<small>${esc(st.en)}</small>` : ''}</td>
-      ${items.map((it, k) => { const v = sc[it.id]; const cls2 = scoreClass(v, it); const ri = rawOf(sh, it); const rd = ri ? (ri.data[st.id] || {}) : null; return `${ri ? `<td class="rawv">${rd.score ?? ''}</td><td class="rawv">${rd.wpm ?? ''}</td>` : ''}<td><input class="sc${cls2}" data-r="${r}" data-c="${k}" data-iid="${it.id}" value="${v === undefined || v === null ? '' : esc(v)}" inputmode="decimal" autocomplete="off" aria-label="${esc(stuName(st))} ${esc(it.name)}"></td>`; }).join('')}
+  const body = studs.map((st, r) => {
+    const sc = cls.scores[st.id] || {}; const res = computeStudent(sh, sc, st.group);
+    return `<tr data-sid="${st.id}"><td class="no stick1">${isElective(sh) && st.cls ? `<small style="display:block;line-height:1.1">${esc(st.cls)}</small>` : ''}${esc(st.no)}</td><td class="nm stick2">${sh.groups && st.group ? `<span class="pill grp">${st.group}</span> ` : ''}${esc(st.zh || st.en)}${st.zh && st.en ? `<small>${esc(st.en)}</small>` : ''}</td>
+      ${items.map((it, k) => { const v = sc[it.id]; const cls2 = scoreClass(v, it); const ri = rawOf(sh, it); const rd = ri ? (ri.data[st.id] || {}) : null; if (sh.groups && it.group && st.group && it.group !== st.group) return `${ri ? '<td class="rawv"></td><td class="rawv"></td>' : ''}<td class="na" title="${GROUP_NAME[st.group]}不做這項">—</td>`;
+        return `${ri ? `<td class="rawv">${rd.score ?? ''}</td><td class="rawv">${rd.wpm ?? ''}</td>` : ''}<td><input class="sc${cls2}" data-r="${r}" data-c="${k}" data-iid="${it.id}" value="${v === undefined || v === null ? '' : esc(v)}" inputmode="decimal" autocomplete="off" aria-label="${esc(stuName(st))} ${esc(it.name)}"></td>`; }).join('')}
       ${catsUsed.map(cat => `<td class="catv" data-cat="${cat.id}">${res.cats[cat.id] === undefined || res.cats[cat.id] === null ? '—' : fmt(res.cats[cat.id], 1)}</td>`).join('')}
       <td class="tot${res.total !== null && res.total < T/2 ? ' low' : ''}">${fmt(res.total, +c.decimals)}</td></tr>`;
   }).join('');
   return `
   <section class="card">
-    <div class="card-head">${classChips(sh)}
+    <div class="card-head"><div class="row">${classChips(sh)}${sh.groups ? `<div class="chips" role="group" aria-label="組別">${[['','全班'],['上','上半班'],['下','下半班']].map(([v, l]) => `<button class="chip" data-act="grpView" data-g="${v}" aria-pressed="${gv === v}">${l}</button>`).join('')}</div>` : ''}</div>
       <div class="row"><button class="btn sm" data-act="copyTotals">複製總分（可貼到 Excel）</button><button class="btn sm primary" data-act="tab" data-tab="export">匯出 Excel</button></div></div>
     <div class="legend"><span>輸入後按 <code>Enter</code> 移到下一位學生，方向鍵移動</span><span><code>缺</code> 缺交，當 0 分</span><span><code>免</code> 豁免，不計入</span><span>可以從 Excel 複製一整欄分數，點第一格後貼上</span></div>
-    ${cls.students.length ? `<div class="grid-wrap"><table class="g" id="grid"><thead>${head1}${head2}${head3}</thead><tbody>${body}</tbody><tfoot>${footRow(sh, cls, items, catsUsed)}</tfoot></table></div>` : `<p class="hint">${esc(cls.name)} 還沒有學生。</p>`}
+    ${studs.length ? `<div class="grid-wrap"><table class="g" id="grid"><thead>${head1}${head2}${head3}</thead><tbody>${body}</tbody><tfoot>${footRow(sh, cls, items, catsUsed, studs)}</tfoot></table></div>` : `<p class="hint">${esc(cls.name)} 還沒有學生。</p>`}
   </section>`;
 }
 function scoreClass(v, it){
@@ -1319,21 +1381,22 @@ function scoreClass(v, it){
   if (typeof v === 'number' && v > num(it.full)) return ' over';
   return '';
 }
-function footRow(sh, cls, items, catsUsed){
+function footRow(sh, cls, items, catsUsed, studs){
+  studs = studs || cls.students;
   const avg = arr => { const v = arr.filter(x => typeof x === 'number' && Number.isFinite(x)); return v.length ? v.reduce((a,b) => a+b, 0) / v.length : null; };
-  const results = cls.students.map(st => computeStudent(sh, cls.scores[st.id]));
-  return `<tr><td class="stick1"></td><td class="stick2" style="text-align:left;padding-left:10px">全班平均</td>
-    ${items.map(it => { const ri = rawOf(sh, it); return `${ri ? `<td>${fmt(avg(cls.students.map(st => (ri.data[st.id] || {}).score)), 1)}</td><td>${fmt(avg(cls.students.map(st => (ri.data[st.id] || {}).wpm)), 1)}</td>` : ''}<td>${fmt(avg(cls.students.map(st => (cls.scores[st.id]||{})[it.id])), 1)}</td>`; }).join('')}
+  const results = studs.map(st => computeStudent(sh, cls.scores[st.id], st.group));
+  return `<tr><td class="stick1"></td><td class="stick2" style="text-align:left;padding-left:10px">${sh.groups && S.grpView ? GROUP_NAME[S.grpView] + '平均' : '全班平均'}</td>
+    ${items.map(it => { const ri = rawOf(sh, it); return `${ri ? `<td>${fmt(avg(studs.map(st => (ri.data[st.id] || {}).score)), 1)}</td><td>${fmt(avg(studs.map(st => (ri.data[st.id] || {}).wpm)), 1)}</td>` : ''}<td>${fmt(avg(studs.map(st => (cls.scores[st.id]||{})[it.id])), 1)}</td>`; }).join('')}
     ${catsUsed.map(cat => `<td>${fmt(avg(results.map(r => r.cats[cat.id])), 1)}</td>`).join('')}
     <td class="tot">${fmt(avg(results.map(r => r.total)), +sh.calc.decimals)}</td></tr>`;
 }
 function refreshRow(sh, cls, sid){
   const tr = document.querySelector(`#grid tr[data-sid="${sid}"]`); if (!tr) return;
-  const res = computeStudent(sh, cls.scores[sid]); const T = num(sh.calc.total);
+  const res = computeStudent(sh, cls.scores[sid], (cls.students.find(x => x.id === sid) || {}).group); const T = num(sh.calc.total);
   const tot = tr.querySelector('td.tot'); tot.textContent = fmt(res.total, +sh.calc.decimals); tot.classList.toggle('low', res.total !== null && res.total < T/2);
   tr.querySelectorAll('td.catv').forEach(td => { const v = res.cats[td.dataset.cat]; td.textContent = v === undefined || v === null ? '—' : fmt(v, 1); });
-  const items = orderedItems(sh); const catsUsed = sh.calc.mode === 'category' ? sh.categories.filter(cat => items.some(i => !i.bonus && i.catId === cat.id)) : [];
-  const tf = document.querySelector('#grid tfoot'); if (tf) tf.innerHTML = footRow(sh, cls, items, catsUsed);
+  const gv = gridView(sh, cls);
+  const tf = document.querySelector('#grid tfoot'); if (tf) tf.innerHTML = footRow(sh, cls, gv.items, gv.catsUsed, gv.studs);
 }
 function normScore(raw){
   const s = String(raw).trim();
@@ -1354,7 +1417,7 @@ function setScore(sh, cls, sid, iid, raw){
 function exportTab(sh){
   const T = num(sh.calc.total); const d = +sh.calc.decimals;
   const stats = sh.classes.map(c => ({c, s: classStats(sh, c)}));
-  const all = sh.classes.flatMap(c => c.students.map(st => computeStudent(sh, c.scores[st.id]).total)).filter(x => x !== null);
+  const all = sh.classes.flatMap(c => c.students.map(st => computeStudent(sh, c.scores[st.id], st.group).total)).filter(x => x !== null);
   const avgAll = all.length ? all.reduce((a,b) => a+b, 0) / all.length : null;
   const blanks = stats.reduce((a,x) => a + x.s.blanks, 0);
   return `
@@ -1455,7 +1518,7 @@ function tyCompute(sh){
   const {it, F, levels} = tyLevels(sh);
   const idx = new Map(), byName = new Map();
   for (const c of sh.classes) for (const st of c.students){
-    idx.set(normCls(c.name) + '|' + String(st.no), {c, st});
+    idx.set(normCls(st.cls || c.name) + '|' + String(st.no), {c, st});
     for (const nm of [st.zh, st.en]) if (nm){ const k = nm.replace(/\s+/g, '').toUpperCase(); byName.set(k, byName.has(k) ? null : {c, st}); }
   }
   const LK = ty.lock || null;
@@ -1467,14 +1530,14 @@ function tyCompute(sh){
     let match = (cls && no !== null) ? (idx.get(normCls(cls) + '|' + no) || null) : null;
     if (!match && name) match = byName.get(name.replace(/\s+/g, '').toUpperCase()) || null;
     if (!match && !cls && no !== null && sh.classes.length === 1) match = idx.get(normCls(sh.classes[0].name) + '|' + no) || null;
-    return {i, cls: match ? match.c.name : cls, no, name: name || (match ? stuName(match.st) : ''), score, wpm, acc, match, m1:0, m2:0, m3:0};
+    return {i, cls: match ? (match.st.cls || match.c.name) : cls, no, name: name || (match ? stuName(match.st) : ''), score, wpm, acc, match, m1:0, m2:0, m3:0};
   }).filter(r => r.cls || r.no !== null || r.name);
   // make-up / manual entries, and marksheet students with no record yet
   const man = ty.manual || {}; const seen = new Set();
   const applyMan = (r, mm) => { for (const k of ['score','wpm','acc']) if (mm[k] !== undefined && mm[k] !== null) r[k] = mm[k]; r.manual = true; };
   for (const r of recs) if (r.match){ if (seen.has(r.match.st.id)) r.dup = true; seen.add(r.match.st.id); if (man[r.match.st.id]) applyMan(r, man[r.match.st.id]); }
   for (const c of sh.classes) for (const st of c.students) if (!seen.has(st.id)){
-    const r = {i:-1, cls: c.name, no: st.no, name: stuName(st), score:null, wpm:null, acc:null, match:{c, st}, placeholder: !man[st.id], m1:0, m2:0, m3:0};
+    const r = {i:-1, cls: st.cls || c.name, no: st.no, name: stuName(st), score:null, wpm:null, acc:null, match:{c, st}, placeholder: !man[st.id], m1:0, m2:0, m3:0};
     if (man[st.id]) applyMan(r, man[st.id]);
     recs.push(r);
   }
@@ -1647,6 +1710,9 @@ const actions = {
     ty.lock = {at: Date.now(), n: res.n, basisWpm: res.basisWpm, cuts, p1: clone(ty.p1), p2: clone(ty.p2), p3: clone(ty.p3), lo: res.lo, hi: res.hi};
     touch(sh); renderTab(); toast('已鎖定計算方法'); },
   tyUnlock(){ const sh = cur(); confirmModal('解除鎖定？', '解除後會按所有已完成的學生（包括補考）重新計算分界，已有學生的換算分數可能改變。已填入分紙的分數不會自動更改，要再按「填入」才會更新。', '解除鎖定', () => { const ty = tyDefaults(sh); if (ty.lock){ ty.p1 = ty.lock.p1; ty.p2 = ty.lock.p2; ty.p3 = ty.lock.p3; ty.basis = ty.lock.basisWpm ? 'wpm' : 'score'; } delete ty.lock; touch(sh); renderTab(); }); },
+  grpView(el){ S.grpView = el.dataset.g; renderTab(); },
+  splitHalf(){ const sh = cur(); const c = curClass(sh); const st = c.students.slice().sort((a, b) => (+a.no || 999) - (+b.no || 999)); const h = Math.ceil(st.length / 2);
+    st.forEach((s0, k) => s0.group = k < h ? '上' : '下'); touch(sh); renderTab(); toast(`班號 1–${st[h-1] ? st[h-1].no : ''} 上半班，其餘下半班`); },
   tyTest(el){ const sh = cur(); tyRoot(sh).cur = el.dataset.k; touch(sh); renderTab(); },
   tyRead(){ const sh = cur(); const t = $('#tyPaste').value; if (!t.trim()){ toast('請先貼上成績'); return; } tyLoadSheets(sh, [{name:'貼上', grid: parseDelimited(t)}]); },
   tyClear(){ const sh = cur(); tyDefaults(sh).raw = null; touch(sh); renderTab(); },
@@ -1692,14 +1758,14 @@ const actions = {
     if (sh.classes.some(c => c.name.toLowerCase() === name.toLowerCase())){ toast('已有這個班別'); return; }
     const c = {id: uid('k'), name, students: [], scores: {}}; sh.classes.push(c); S.classId = c.id; touch(sh); renderAll(); },
   delClass(){ const sh = cur(); const c = curClass(sh); confirmModal(`刪除 ${c.name}？`, '這班的學生名單及分數會被刪除。', '刪除', () => { sh.classes = sh.classes.filter(x => x.id !== c.id); S.classId = null; touch(sh); renderAll(); }); },
-  addStudent(){ const sh = cur(); const c = curClass(sh); const maxNo = c.students.reduce((a,s) => Math.max(a, +s.no || 0), 0); c.students.push({id: uid('s'), no: maxNo + 1, zh:'', en:'', sex:''}); touch(sh); renderAll(); const ins = document.querySelectorAll('[data-k="zh"]'); ins[ins.length-1]?.focus(); },
-  sortStudents(){ const sh = cur(); const c = curClass(sh); c.students.sort((a,b) => (+a.no || 999) - (+b.no || 999)); touch(sh); renderTab(); },
+  addStudent(){ const sh = cur(); const c = curClass(sh); const maxNo = c.students.reduce((a,s) => Math.max(a, +s.no || 0), 0); c.students.push(isElective(sh) ? {id: uid('s'), cls:'', no:'', zh:'', en:'', sex:''} : {id: uid('s'), no: maxNo + 1, zh:'', en:'', sex:''}); touch(sh); renderAll(); const ins = document.querySelectorAll('[data-k="zh"]'); ins[ins.length-1]?.focus(); },
+  sortStudents(){ const sh = cur(); const c = curClass(sh); c.students.sort(stuSort(sh)); touch(sh); renderTab(); },
   delStudent(el){ const sh = cur(); const c = curClass(sh); c.students = c.students.filter(s => s.id !== el.dataset.id); delete c.scores[el.dataset.id]; touch(sh); renderAll(); },
-  pasteImport(){ const t = $('#pasteBox').value; const name = $('#pasteClass').value.trim(); if (!t.trim()){ toast('請先貼上名單'); return; } if (!name){ toast('請填寫班別'); return; }
-    const st = rosterFromPaste(t); if (!st.length){ toast('讀不到名單'); return; } S.importPreview = [{name, students: st, include: true}]; S.importPreview.source = '貼上的名單'; renderTab(); },
+  pasteImport(){ const t = $('#pasteBox').value; const name = $('#pasteClass').value.trim(); const sh0 = cur(); if (!t.trim()){ toast('請先貼上名單'); return; } if (!name){ toast(`請填寫${GL(sh0)}`); return; }
+    const st = isElective(sh0) ? electiveRoster([{name:'貼上', grid: parseDelimited(t)}]) : rosterFromPaste(t); if (!st.length){ toast('讀不到名單'); return; } S.importPreview = [{name, students: st, include: true}]; S.importPreview.source = '貼上的名單'; renderTab(); },
   applyImport(){ const sh = cur(); const pv = S.importPreview || []; let n = 0, last = null;
     for (const p of pv) if (p.include && p.name.trim()){ last = applyRoster(sh, p.name, p.students); n++; }
-    S.importPreview = null; if (last) S.classId = last.id; touch(sh); renderAll(); toast(`已匯入 ${n} 班`); },
+    S.importPreview = null; if (last) S.classId = last.id; touch(sh); renderAll(); toast(`已匯入 ${n} ${isElective(sh) ? '組' : '班'}`); },
   cancelImport(){ S.importPreview = null; renderTab(); },
   copyRoster(){ const src = S.sheets.find(s => s.id === $('#copyFrom').value); if (!src) return;
     S.importPreview = src.classes.map(c => ({name: c.name, students: c.students.map(s => ({no: s.no, zh: s.zh, en: s.en, sex: s.sex})), include: true}));
@@ -1726,11 +1792,11 @@ const actions = {
       <div class="row"><button class="btn" data-act="colFill" data-id="${it.id}" data-v="full">空格填滿分</button><button class="btn" data-act="colFill" data-id="${it.id}" data-v="0">空格填 0</button><button class="btn" data-act="colFill" data-id="${it.id}" data-v="免">全班豁免</button><button class="btn danger" data-act="colFill" data-id="${it.id}" data-v="clear">清除整欄</button></div>
       <div class="foot"><button class="btn" data-act="close">關閉</button></div>`); },
   colFill(el){ const sh = cur(); const cls = curClass(sh); const it = sh.items.find(i => i.id === el.dataset.id); const v = el.dataset.v;
-    for (const st of cls.students){ cls.scores[st.id] ||= {}; const cur0 = cls.scores[st.id][it.id]; const empty = cur0 === undefined || cur0 === '' || cur0 === null;
+    for (const st of cls.students){ if (sh.groups && it.group && st.group && it.group !== st.group) continue; cls.scores[st.id] ||= {}; const cur0 = cls.scores[st.id][it.id]; const empty = cur0 === undefined || cur0 === '' || cur0 === null;
       if (v === 'clear') delete cls.scores[st.id][it.id]; else if (v === '免') cls.scores[st.id][it.id] = '免'; else if (empty) cls.scores[st.id][it.id] = v === 'full' ? num(it.full) : 0; }
     closeModal(); touch(sh); renderTab(); },
   async copyTotals(){ const sh = cur(); const cls = curClass(sh);
-    const text = ['班號\t中文姓名\t英文姓名\t總分'].concat(cls.students.map(st => `${st.no}\t${st.zh}\t${st.en}\t${fmt(computeStudent(sh, cls.scores[st.id]).total, +sh.calc.decimals)}`)).join('\n');
+    const el = isElective(sh); const text = [(el ? '班別\t學號' : '班號') + '\t中文姓名\t英文姓名\t總分'].concat(cls.students.map(st => `${el ? (st.cls || '') + '\t' : ''}${st.no}\t${st.zh}\t${st.en}\t${fmt(computeStudent(sh, cls.scores[st.id], st.group).total, +sh.calc.decimals)}`)).join('\n');
     try { await navigator.clipboard.writeText(text); toast(`已複製 ${cls.name} 的總分`); }
     catch { openModal(`<h2>複製總分</h2><p class="hint">全選後按 Ctrl+C 複製。</p><textarea class="inp" id="copyArea" style="min-height:220px">${esc(text)}</textarea><div class="foot"><button class="btn" data-act="close">關閉</button></div>`); const a = $('#copyArea'); a.focus(); a.select(); } },
   exportXlsx(){ const sh = cur(); const ids = [...document.querySelectorAll('[data-exp]')].filter(x => x.checked).map(x => x.dataset.exp);
@@ -1790,6 +1856,8 @@ document.addEventListener('change', async e => {
     if (k === 'mode' && t.value === 'category'){ const tot = sh.categories.reduce((a,x) => a + num(x.weight), 0); if (!tot) autoCatWeights(sh.categories, sh.items); }
     touch(sh); renderTab(); return;
   }
+  if (f === 'elective'){ sh.elective = t.checked; touch(sh); renderAll(); return; }
+  if (f === 'groups'){ sh.groups = t.checked; touch(sh); renderTab(); return; }
   if (f === 'tyMan'){
     const ty = tyDefaults(sh); ty.manual ||= {}; const sid = t.dataset.sid; const m = ty.manual[sid] ||= {};
     const v = t.value.trim(); if (v === '') delete m[t.dataset.k]; else { const n = tyNum(v); if (n === null || n < 0){ toast('請輸入數字'); renderTab(); return; } m[t.dataset.k] = n; }
@@ -1823,14 +1891,16 @@ document.addEventListener('focusin', e => { const t = e.target; if (t.classList 
 document.addEventListener('mouseup', e => { const t = e.target; if (t.classList && t.classList.contains('sc') && t._fresh){ e.preventDefault(); t._fresh = false; } });
 document.addEventListener('keydown', e => { if (e.target && e.target._fresh) e.target._fresh = false; }, true);
 function gridCell(r, c){ return document.querySelector(`#grid input.sc[data-r="${r}"][data-c="${c}"]`); }
+function gridStep(r, c, dr, dc){ const maxR = document.querySelectorAll('#grid tbody tr').length - 1, maxC = document.querySelectorAll('#grid thead tr:nth-child(3) th').length;
+  for (let rr = r + dr, cc = c + dc; rr >= 0 && rr <= maxR && cc >= 0 && cc <= maxC; rr += dr, cc += dc){ const n = gridCell(rr, cc); if (n) return n; } return null; }
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && $('#modalRoot').innerHTML){ closeModal(); return; }
   const t = e.target; if (!t.classList || !t.classList.contains('sc')) return;
   const r = +t.dataset.r, c = +t.dataset.c; let n = null;
-  if (e.key === 'Enter' || e.key === 'ArrowDown') n = gridCell(e.shiftKey && e.key === 'Enter' ? r - 1 : r + 1, c);
-  else if (e.key === 'ArrowUp') n = gridCell(r - 1, c);
-  else if (e.key === 'ArrowRight' && t.selectionEnd === t.value.length) n = gridCell(r, c + 1);
-  else if (e.key === 'ArrowLeft' && t.selectionStart === 0 && t.selectionEnd === 0 || e.key === 'ArrowLeft' && t.selectionStart === 0 && t.selectionEnd === t.value.length) n = gridCell(r, c - 1);
+  if (e.key === 'Enter' || e.key === 'ArrowDown') n = gridStep(r, c, e.shiftKey && e.key === 'Enter' ? -1 : 1, 0);
+  else if (e.key === 'ArrowUp') n = gridStep(r, c, -1, 0);
+  else if (e.key === 'ArrowRight' && t.selectionEnd === t.value.length) n = gridStep(r, c, 0, 1);
+  else if (e.key === 'ArrowLeft' && t.selectionStart === 0 && t.selectionEnd === 0 || e.key === 'ArrowLeft' && t.selectionStart === 0 && t.selectionEnd === t.value.length) n = gridStep(r, c, 0, -1);
   if (n){ e.preventDefault(); n.focus(); }
   else if (e.key === 'Enter') e.preventDefault();
 });
@@ -1838,10 +1908,10 @@ document.addEventListener('paste', e => {
   const t = e.target; if (!t.classList || !t.classList.contains('sc')) return;
   const text = (e.clipboardData || window.clipboardData).getData('text'); if (!/[\t\n]/.test(text.replace(/\n$/, ''))) return;
   e.preventDefault();
-  const sh = cur(); const cls = curClass(sh); const items = orderedItems(sh);
+  const sh = cur(); const cls = curClass(sh); const {items, studs} = gridView(sh, cls);
   const rows = text.replace(/\r/g, '').replace(/\n$/, '').split('\n').map(l => l.split('\t'));
   const r0 = +t.dataset.r, c0 = +t.dataset.c; let n = 0, bad = 0;
-  rows.forEach((row, i) => row.forEach((v, j) => { const st = cls.students[r0 + i], it = items[c0 + j]; if (!st || !it) return; if (setScore(sh, cls, st.id, it.id, v)) n++; else bad++; }));
+  rows.forEach((row, i) => row.forEach((v, j) => { const st = studs[r0 + i], it = items[c0 + j]; if (!st || !it || (sh.groups && it.group && st.group && it.group !== st.group)) return; if (setScore(sh, cls, st.id, it.id, v)) n++; else bad++; }));
   touch(sh); renderTab(); gridCell(r0, c0)?.focus();
   toast(`已貼上 ${n} 個分數${bad ? `，${bad} 個無法讀取` : ''}`);
 });
